@@ -1,0 +1,29 @@
+# Secrets
+.env
+*.env.local
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+
+# Node
+node_modules/
+dist/
+
+# Data and model artifacts (too big / regenerated)
+ml/data/raw/*
+ml/data/interim/*
+ml/data/processed/*
+ml/artifacts/*
+!ml/data/raw/.gitkeep
+!ml/data/interim/.gitkeep
+!ml/data/processed/.gitkeep
+!ml/artifacts/.gitkeep
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
