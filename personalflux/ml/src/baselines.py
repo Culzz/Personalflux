@@ -22,6 +22,8 @@ class PopularityRecommender:
             df = df[df["time"] >= cutoff]
         scores = df.groupby("item_id")["weight"].sum().sort_values(ascending=False)
         self.ranked = scores.index[: self.pool].tolist()
+        top = scores.iloc[: self.pool]
+        self.score_map = (top / top.max()).to_dict()
 
         purchases = train[train["event"] == "transaction"]
         self.bought = purchases.groupby("user_id")["item_id"].apply(set).to_dict()
@@ -98,26 +100,55 @@ class ItemKNNRecommender:
 
     def recommend(self, user_id, k=10):
         self.n_total += 1
-        out = []
-        row = self.user_index.get(user_id)
-        seen = set()
-        if row is not None:
-            user_history = self.Q[row]
-            seen = set(self.items[user_history.indices])
-            scores = (user_history @ self.S).tocoo()
-            order = np.argsort(-scores.data)
-            for idx in order:
-                item = self.items[scores.col[idx]]
-                if item not in seen:
-                    out.append(item)
-                    if len(out) == k:
-                        break
+        if k <= 0:
+            return []
+        out = list(self.score_items(user_id, n=k))
         if out:
             self.n_personalized += 1
         if len(out) < k and self.fallback is not None:
             for item in self.fallback.recommend(user_id, k=k * 3):
-                if item not in seen and item not in out:
+                if item not in self.bought.get(user_id, set()) and item not in out:
                     out.append(item)
                     if len(out) == k:
                         break
         return out
+
+    def score_items(self, user_id, n=200):
+        """Return {item: score} for this user's top-n items, scaled to 0-1."""
+        row = self.user_index.get(user_id)
+        if row is None:
+            return {}
+        scores = (self.Q[row] @ self.S).tocoo()
+        order = np.lexsort((scores.col, -scores.data))
+        bought = self.bought.get(user_id, set())
+        out = {}
+        for idx in order:
+            item = self.items[scores.col[idx]]
+            if item not in bought:
+                out[item] = float(scores.data[idx])
+                if len(out) == n:
+                    break
+        if out:
+            top = max(out.values())
+            out = {i: s / top for i, s in out.items()}
+        return out
+
+
+class HybridRecommender:
+    """final = alpha * personal (item-KNN) + (1 - alpha) * recent popularity."""
+
+    def __init__(self, knn, pop, alpha=0.5):
+        self.knn = knn
+        self.pop = pop
+        self.alpha = alpha
+
+    def recommend(self, user_id, k=10):
+        bought = self.pop.bought.get(user_id, set())
+        combined = {}
+        for item, s in self.knn.score_items(user_id).items():
+            combined[item] = self.alpha * s
+        for item, s in self.pop.score_map.items():
+            if item not in bought:
+                combined[item] = combined.get(item, 0.0) + (1 - self.alpha) * s
+        ranked = sorted(combined, key=combined.get, reverse=True)
+        return ranked[:k]
