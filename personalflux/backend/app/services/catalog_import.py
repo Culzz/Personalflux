@@ -19,7 +19,7 @@ def build_product_row(source_item_id: int, category_id: str | None) -> dict:
         "id": uuid.uuid4(),
         "source_item_id": source_item_id,
         "catalog_source": "retailrocket",
-        "title": f"Retailrocket item {source_item_id}",
+        "title": f"Retailrocket item {source_item_id}",   # placeholder, not a real title
         "category": f"Category {cat}" if cat else None,
         "is_active": True,
     }
@@ -28,12 +28,13 @@ def build_product_row(source_item_id: int, category_id: str | None) -> dict:
 def read_export(path: Path):
     """Yield product rows from the CSV written by ml/src/export_catalog.py."""
     with open(path, newline="", encoding="utf-8") as f:
-        for row in csv.DictReader(f):
-            yield build_product_row(int(row["source_item_id"]), row.get("category_id"))
+        for r in csv.DictReader(f):
+            yield build_product_row(int(r["source_item_id"]), r.get("category_id"))
 
 
 def _flush(db: Session, batch: list[dict]) -> None:
     stmt = insert(Product.__table__).values(batch)
+    # If an item is already in the table, skip it instead of failing
     db.execute(stmt.on_conflict_do_nothing(index_elements=["source_item_id"]))
     db.commit()
 
@@ -50,8 +51,5 @@ def import_products(db: Session, rows) -> dict:
     if batch:
         _flush(db, batch)
     after = db.scalar(select(func.count()).select_from(Product))
-    return {
-        "rows_read": read,
-        "inserted": after - before,
-        "skipped_existing": read - (after - before),
-    }
+    return {"rows_read": read, "inserted": after - before,
+            "skipped_existing": read - (after - before)}
