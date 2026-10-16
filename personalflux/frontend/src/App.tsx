@@ -1,25 +1,54 @@
-import { useEffect, useState } from "react";
+import type { ReactNode } from "react";
+import { Route, Routes } from "react-router-dom";
+import { Layout } from "./components/Layout";
+import { RequireAuth } from "./components/RequireAuth";
+import { AuthProvider } from "./features/auth/AuthContext";
+import { CartProvider } from "./features/cart/CartContext";
+import { ConsentProvider } from "./features/consent/ConsentContext";
+import { SavedProvider } from "./features/saved/SavedContext";
+import { LoginPage, RegisterPage } from "./pages/AuthPages";
+import CartPage from "./pages/CartPage";
+import DiscoverPage from "./pages/DiscoverPage";
+import HistoryPage from "./pages/HistoryPage";
+import HomePage from "./pages/HomePage";
+import NotFoundPage from "./pages/NotFoundPage";
+import PreferencesPage from "./pages/PreferencesPage";
+import ProductPage from "./pages/ProductPage";
+import SavedPage from "./pages/SavedPage";
+import SettingsPage from "./pages/SettingsPage";
 
-type Health = { status: string; service: string };
+export function Providers({ children }: { children: ReactNode }) {
+  return (
+    <ConsentProvider>
+      <AuthProvider>
+        <SavedProvider>
+          <CartProvider>{children}</CartProvider>
+        </SavedProvider>
+      </AuthProvider>
+    </ConsentProvider>
+  );
+}
 
 export default function App() {
-  const [health, setHealth] = useState<Health | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    fetch("http://127.0.0.1:8000/health")
-      .then((res) => res.json())
-      .then(setHealth)
-      .catch(() => setError("Backend not reachable"));
-  }, []);
-
   return (
-    <main style={{ padding: 32, fontFamily: "sans-serif" }}>
-      <h1>PersonaFlux</h1>
-      <p>
-        Backend:{" "}
-        {error ? error : health ? `${health.status} (${health.service})` : "checking..."}
-      </p>
-    </main>
+    <Providers>
+      <Routes>
+        <Route element={<Layout />}>
+          <Route index element={<HomePage />} />
+          <Route path="discover" element={<DiscoverPage />} />
+          <Route path="products/:id" element={<ProductPage />} />
+          <Route path="cart" element={<CartPage />} />
+          <Route path="login" element={<LoginPage />} />
+          <Route path="register" element={<RegisterPage />} />
+          <Route element={<RequireAuth />}>
+            <Route path="saved" element={<SavedPage />} />
+            <Route path="preferences" element={<PreferencesPage />} />
+            <Route path="history" element={<HistoryPage />} />
+            <Route path="settings" element={<SettingsPage />} />
+          </Route>
+          <Route path="*" element={<NotFoundPage />} />
+        </Route>
+      </Routes>
+    </Providers>
   );
 }

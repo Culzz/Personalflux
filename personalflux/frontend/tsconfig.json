@@ -10,7 +10,10 @@
     "noEmit": true,
     "isolatedModules": true,
     "resolveJsonModule": true,
-    "allowImportingTsExtensions": true
+    "allowImportingTsExtensions": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "types": ["vite/client", "vitest/globals"]
   },
   "include": ["src", "vite.config.ts"]
 }
