@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { api, type Product, type RecResponse } from "../api";
+import ProductCard, { imageFor } from "../components/ProductCard";
 
 export default function ProductPage() {
   const { id } = useParams();
@@ -14,19 +15,29 @@ export default function ProductPage() {
     api.event(id, "view");
   }, [id]);
 
-  if (!product) return <p>Loading...</p>;
+  if (!product) return <p className="muted">Loading...</p>;
 
   return (
     <div>
-      <h2>{product.title}</h2>
-      <p className="muted">{product.category || "uncategorised"}</p>
-      <h3>Similar</h3>
+      <div className="detail">
+        <img src={imageFor(product)} alt={product.title} />
+        <div>
+          {product.category && <span className="tag">{product.category}</span>}
+          <h1>{product.title}</h1>
+          {product.price && <p>${product.price}</p>}
+          {product.description && <p className="muted">{product.description}</p>}
+          <div className="row">
+            <button onClick={() => id && api.event(id, "save")}>Save</button>
+            <button className="ghost" onClick={() => id && api.event(id, "dismiss")}>
+              Dismiss
+            </button>
+          </div>
+        </div>
+      </div>
+      <h3 style={{ marginTop: 28 }}>Often looked at together</h3>
       <div className="grid">
         {(similar?.recommendations || []).map((r) => (
-          <div key={r.product_id} className="card">
-            <div>{r.product.title}</div>
-            <div className="muted">{r.explanation}</div>
-          </div>
+          <ProductCard key={r.product_id} p={r.product} reason={r.explanation} />
         ))}
       </div>
     </div>

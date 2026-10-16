@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
 import { api, type Product } from "../api";
+import ProductCard from "../components/ProductCard";
 
 export default function Discover() {
   const [q, setQ] = useState("");
@@ -15,15 +15,16 @@ export default function Discover() {
 
   return (
     <div>
+      <div className="hero">
+        <h1>Discover</h1>
+        <p>Search the catalog. Views feed back into your recommendations.</p>
+      </div>
       <div className="row">
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search products" />
       </div>
       <div className="grid">
         {items.map((p) => (
-          <Link key={p.id} className="card" to={`/products/${p.id}`}>
-            <div>{p.title}</div>
-            <div className="muted">{p.category || "uncategorised"}</div>
-          </Link>
+          <ProductCard key={p.id} p={p} />
         ))}
       </div>
     </div>

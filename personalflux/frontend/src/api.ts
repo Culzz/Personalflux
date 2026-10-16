@@ -27,8 +27,10 @@ async function req(path: string, init?: RequestInit) {
 export type Product = {
   id: string;
   title: string;
+  description: string | null;
   category: string | null;
   price: string | null;
+  image_url: string | null;
 };
 
 export type RecItem = {

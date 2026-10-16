@@ -7,11 +7,16 @@ import ProductPage from "./pages/ProductPage";
 export default function App() {
   return (
     <BrowserRouter>
-      <nav>
-        <Link to="/">PersonaFlux</Link>
-        <Link to="/discover">Discover</Link>
-        <Link to="/login">Login</Link>
-      </nav>
+      <div className="topbar">
+        <Link to="/" className="brand">
+          PersonaFlux<small>ADAPTIVE SHOP</small>
+        </Link>
+        <div className="links">
+          <Link to="/">For you</Link>
+          <Link to="/discover">Discover</Link>
+          <Link to="/login">Login</Link>
+        </div>
+      </div>
       <main>
         <Routes>
           <Route path="/" element={<Home />} />

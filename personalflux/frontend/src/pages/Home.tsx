@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
 import { api, type RecResponse } from "../api";
+import ProductCard from "../components/ProductCard";
 
 export default function Home() {
   const [feed, setFeed] = useState<RecResponse | null>(null);
@@ -11,21 +11,21 @@ export default function Home() {
   }, []);
 
   if (err) return <p>{err}</p>;
-  if (!feed) return <p>Loading recommendations...</p>;
+  if (!feed) return <p className="muted">Loading your feed...</p>;
 
   return (
     <div>
-      <p className="muted">
-        {feed.strategy} {feed.fallback_used ? "(fallback)" : ""} ·{" "}
-        {feed.model_version || "no model"}
-      </p>
+      <div className="hero">
+        <h1>For you</h1>
+        <p>
+          {feed.strategy.replace(/_/g, " ")}
+          {feed.fallback_used ? " · popular fallback" : ""} ·{" "}
+          {feed.model_version || "no model loaded"}
+        </p>
+      </div>
       <div className="grid">
         {feed.recommendations.map((r) => (
-          <Link key={r.product_id} className="card" to={`/products/${r.product.id}`}>
-            <div>{r.product.title}</div>
-            <div className="muted">{r.product.category || "uncategorised"}</div>
-            <div className="muted">{r.explanation}</div>
-          </Link>
+          <ProductCard key={r.product_id} p={r.product} reason={r.explanation} />
         ))}
       </div>
     </div>
