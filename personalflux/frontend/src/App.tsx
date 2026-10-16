@@ -1,25 +1,25 @@
-import { useEffect, useState } from "react";
-
-type Health = { status: string; service: string };
+import { BrowserRouter, Link, Route, Routes } from "react-router-dom";
+import Discover from "./pages/Discover";
+import Home from "./pages/Home";
+import Login from "./pages/Login";
+import ProductPage from "./pages/ProductPage";
 
 export default function App() {
-  const [health, setHealth] = useState<Health | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    fetch("http://127.0.0.1:8000/health")
-      .then((res) => res.json())
-      .then(setHealth)
-      .catch(() => setError("Backend not reachable"));
-  }, []);
-
   return (
-    <main style={{ padding: 32, fontFamily: "sans-serif" }}>
-      <h1>PersonaFlux</h1>
-      <p>
-        Backend:{" "}
-        {error ? error : health ? `${health.status} (${health.service})` : "checking..."}
-      </p>
-    </main>
+    <BrowserRouter>
+      <nav>
+        <Link to="/">PersonaFlux</Link>
+        <Link to="/discover">Discover</Link>
+        <Link to="/login">Login</Link>
+      </nav>
+      <main>
+        <Routes>
+          <Route path="/" element={<Home />} />
+          <Route path="/discover" element={<Discover />} />
+          <Route path="/products/:id" element={<ProductPage />} />
+          <Route path="/login" element={<Login />} />
+        </Routes>
+      </main>
+    </BrowserRouter>
   );
 }
