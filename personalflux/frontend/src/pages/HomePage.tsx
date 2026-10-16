@@ -35,9 +35,30 @@ export default function HomePage() {
     (s) => (user ? customerApi.history(8, s) : Promise.resolve([])),
     [user?.id],
   );
+  const fresh = useAsync((s) => productsApi.list({ sort: "newest", page_size: 8 }, s), []);
 
   return (
     <div className="space-y-10">
+      {!user && (
+        <section aria-labelledby="welcome" className="rounded-2xl border border-slate-800 bg-slate-900 px-6 py-10 text-center">
+          <p className="font-display text-sm uppercase tracking-[0.2em] text-violet-300">Adaptive shopping</p>
+          <h1 id="welcome" className="mx-auto mt-2 max-w-xl text-3xl font-bold sm:text-4xl">
+            Recommendations that keep up when your taste changes
+          </h1>
+          <p className="mx-auto mt-3 max-w-lg text-sm text-slate-400">
+            Long-term preferences plus what you are looking at right now. Every suggestion shows its reason,
+            and you can reset what the shop inferred at any time.
+          </p>
+          <div className="mt-5 flex justify-center gap-2">
+            <Link to="/discover" className="rounded-md bg-violet-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-violet-500">
+              Start browsing
+            </Link>
+            <Link to="/register" className="rounded-md bg-slate-800 px-5 py-2.5 text-sm hover:bg-slate-700">
+              Create an account
+            </Link>
+          </div>
+        </section>
+      )}
       <section aria-labelledby="for-you">
         <h1 id="for-you" className="text-2xl font-bold">Recommended for you</h1>
         {feed.data && (
@@ -96,8 +117,18 @@ export default function HomePage() {
         </section>
       )}
 
-      <section aria-labelledby="trending">
-        <h2 id="trending" className="text-lg font-semibold">Trending</h2>
+      {fresh.data && fresh.data.items.length > 0 && (
+        <section aria-labelledby="new">
+          <h2 id="new" className="text-lg font-semibold">New arrivals</h2>
+          <ul className="mt-3 grid grid-cols-2 gap-4 sm:grid-cols-4">
+            {fresh.data.items.map((p) => (
+              <li key={p.id}><ProductCard product={p} /></li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      <section aria-labelledby="trending">        <h2 id="trending" className="text-lg font-semibold">Trending</h2>
         <div className="mt-3">
           {trending.loading && <CardSkeletons count={4} />}
           {trending.error && <ErrorState error={trending.error} onRetry={trending.reload} />}

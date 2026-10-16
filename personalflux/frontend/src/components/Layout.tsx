@@ -76,7 +76,8 @@ export function Layout() {
         <NavLink to="/login" className={tab}><User size={22} />Account</NavLink>
       </nav>
       <footer className="border-t border-slate-800 px-4 py-4 text-center text-xs text-slate-500">
-        PersonaFlux is a portfolio project using the public Retailrocket dataset. There are no real products,
+        <Link to="/about" className="underline hover:text-slate-300">About PersonaFlux</Link>
+        {" · "}A portfolio project using the public Retailrocket dataset. There are no real products,
         prices or payments.
       </footer>
       <ConsentBanner />

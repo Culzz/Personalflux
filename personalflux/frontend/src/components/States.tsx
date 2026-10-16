@@ -42,8 +42,9 @@ export function EmptyState({ title, children }: { title: string; children?: Reac
 
 export function PageLoading() {
   return (
-    <div role="status" aria-label="Loading" className="p-10 text-center text-slate-400">
-      Loading…
+    <div role="status" aria-label="Loading" className="p-10 text-center">
+      <p className="font-display text-xl">Persona<span className="text-brass">Flux</span></p>
+      <p className="mt-2 text-sm text-slate-400">Loading…</p>
     </div>
   );
 }

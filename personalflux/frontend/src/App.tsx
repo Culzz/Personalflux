@@ -7,6 +7,7 @@ import { CartProvider } from "./features/cart/CartContext";
 import { ConsentProvider } from "./features/consent/ConsentContext";
 import { SavedProvider } from "./features/saved/SavedContext";
 import { LoginPage, RegisterPage } from "./pages/AuthPages";
+import AboutPage from "./pages/AboutPage";
 import BusinessPage from "./pages/BusinessPage";
 import CartPage from "./pages/CartPage";
 import DiscoverPage from "./pages/DiscoverPage";
@@ -39,6 +40,7 @@ export default function App() {
           <Route path="discover" element={<DiscoverPage />} />
           <Route path="products/:id" element={<ProductPage />} />
           <Route path="cart" element={<CartPage />} />
+          <Route path="about" element={<AboutPage />} />
           <Route path="business" element={<BusinessPage />} />
           <Route path="login" element={<LoginPage />} />
           <Route path="register" element={<RegisterPage />} />
