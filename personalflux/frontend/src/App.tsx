@@ -1,10 +1,31 @@
-import { BrowserRouter, Link, Route, Routes } from "react-router-dom";
-import Discover from "./pages/Discover";
-import Home from "./pages/Home";
-import Login from "./pages/Login";
-import ProductPage from "./pages/ProductPage";
+import { Suspense, lazy, useEffect, useState } from "react";
+import { Bookmark, Compass, Home as HomeIcon, User } from "lucide-react";
+import { Link, BrowserRouter, NavLink, Route, Routes } from "react-router-dom";
+import { SkeletonGrid } from "./components/ProductCard";
+
+const Home = lazy(() => import("./pages/Home"));
+const Discover = lazy(() => import("./pages/Discover"));
+const ProductPage = lazy(() => import("./pages/ProductPage"));
+const Auth = lazy(() => import("./pages/Auth"));
+const Saved = lazy(() => import("./pages/Saved"));
+const Prefs = lazy(() => import("./pages/Preferences"));
+
+export function toast(msg: string) {
+  window.dispatchEvent(new CustomEvent("toast", { detail: msg }));
+}
 
 export default function App() {
+  const [msg, setMsg] = useState("");
+
+  useEffect(() => {
+    const fn = (e: Event) => {
+      setMsg((e as CustomEvent).detail);
+      setTimeout(() => setMsg(""), 2200);
+    };
+    window.addEventListener("toast", fn);
+    return () => window.removeEventListener("toast", fn);
+  }, []);
+
   return (
     <BrowserRouter>
       <div className="topbar">
@@ -12,19 +33,40 @@ export default function App() {
           PersonaFlux<small>ADAPTIVE SHOP</small>
         </Link>
         <div className="links">
-          <Link to="/">For you</Link>
-          <Link to="/discover">Discover</Link>
-          <Link to="/login">Login</Link>
+          <NavLink to="/">For you</NavLink>
+          <NavLink to="/discover">Discover</NavLink>
+          <NavLink to="/saved">Saved</NavLink>
+          <NavLink to="/auth">Account</NavLink>
         </div>
       </div>
       <main>
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/discover" element={<Discover />} />
-          <Route path="/products/:id" element={<ProductPage />} />
-          <Route path="/login" element={<Login />} />
-        </Routes>
+        <Suspense fallback={<SkeletonGrid />}>
+          <Routes>
+            <Route path="/" element={<Home />} />
+            <Route path="/discover" element={<Discover />} />
+            <Route path="/products/:id" element={<ProductPage />} />
+            <Route path="/auth" element={<Auth />} />
+            <Route path="/login" element={<Auth />} />
+            <Route path="/saved" element={<Saved />} />
+            <Route path="/preferences" element={<Prefs />} />
+          </Routes>
+        </Suspense>
       </main>
+      <nav className="tabbar">
+        <NavLink to="/" className={({ isActive }) => (isActive ? "active" : "")}>
+          <HomeIcon size={22} />For you
+        </NavLink>
+        <NavLink to="/discover" className={({ isActive }) => (isActive ? "active" : "")}>
+          <Compass size={22} />Discover
+        </NavLink>
+        <NavLink to="/saved" className={({ isActive }) => (isActive ? "active" : "")}>
+          <Bookmark size={22} />Saved
+        </NavLink>
+        <NavLink to="/auth" className={({ isActive }) => (isActive ? "active" : "")}>
+          <User size={22} />Account
+        </NavLink>
+      </nav>
+      {msg && <div className="toast">{msg}</div>}
     </BrowserRouter>
   );
 }

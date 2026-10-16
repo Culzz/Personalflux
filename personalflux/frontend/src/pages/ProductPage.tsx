@@ -1,12 +1,15 @@
 import { useEffect, useState } from "react";
+import { Bookmark, BookmarkCheck } from "lucide-react";
 import { useParams } from "react-router-dom";
-import { api, type Product, type RecResponse } from "../api";
+import { api, isLoggedIn, type Product, type RecResponse } from "../api";
 import ProductCard, { imageFor } from "../components/ProductCard";
+import { toast } from "../App";
 
 export default function ProductPage() {
   const { id } = useParams();
   const [product, setProduct] = useState<Product | null>(null);
   const [similar, setSimilar] = useState<RecResponse | null>(null);
+  const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -16,6 +19,20 @@ export default function ProductPage() {
   }, [id]);
 
   if (!product) return <p className="muted">Loading...</p>;
+
+  async function toggleSave() {
+    if (!id) return;
+    if (!isLoggedIn()) { toast("Login to save items"); return; }
+    if (saved) {
+      setSaved(false);
+      await api.unsave(id);
+      toast("Removed from saved");
+    } else {
+      setSaved(true);
+      await api.save(id);
+      toast("Saved");
+    }
+  }
 
   return (
     <div>
@@ -27,8 +44,11 @@ export default function ProductPage() {
           {product.price && <p>${product.price}</p>}
           {product.description && <p className="muted">{product.description}</p>}
           <div className="row">
-            <button onClick={() => id && api.event(id, "save")}>Save</button>
-            <button className="ghost" onClick={() => id && api.event(id, "dismiss")}>
+            <button onClick={toggleSave}>
+              {saved ? <BookmarkCheck size={16} /> : <Bookmark size={16} />}{" "}
+              {saved ? "Saved" : "Save"}
+            </button>
+            <button className="ghost" onClick={() => id && api.event(id, "dismiss").then(() => toast("Dismissed — will show less like this"))}>
               Dismiss
             </button>
           </div>
