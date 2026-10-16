@@ -34,3 +34,12 @@ UUIDs for app entities; source dataset ids preserved separately. Money as
 `Numeric`, never float. Events are append-only and idempotent by key.
 Customer deletion cascades. Offline metrics and live activity are reported
 separately by design (`/ml/experiments` vs `/analytics/*`).
+
+## Capacity
+
+Single-node deployment. Reference data: ~225k catalog rows, ~2.7M events.
+Reads dominate (catalog, feeds); writes are single-row event inserts.
+PostgreSQL handles this comfortably on one node, so there is no cache,
+queue, replica, or object store yet. Add those on measured need, not before:
+Redis for rate limits across workers first, managed Postgres + backups when
+leaving localhost, a CDN when static traffic justifies it.
