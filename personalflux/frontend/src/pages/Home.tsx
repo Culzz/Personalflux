@@ -1,18 +1,27 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Sparkles, TrendingUp } from "lucide-react";
-import { api, type RecResponse } from "../api";
+import { History, Sparkles, TrendingUp } from "lucide-react";
+import { api, isLoggedIn, type Prefs, type RecResponse } from "../api";
 import ProductCard, { SkeletonGrid } from "../components/ProductCard";
 import EmptyState from "../components/EmptyState";
 
 export default function Home() {
   const [feed, setFeed] = useState<RecResponse | null>(null);
   const [trend, setTrend] = useState<RecResponse | null>(null);
+  const [prefs, setPrefs] = useState<Prefs | null>(null);
   const [err, setErr] = useState("");
 
   useEffect(() => {
-    api.home().then(setFeed).catch(() => setErr("Backend not reachable"));
+    api.home().then((f) => {
+      setFeed(f);
+      if (f.request_id) {
+        api.impressions(f.request_id, f.model_version, f.recommendations.map((r, i) => ({
+          product_id: r.product_id, position: i + 1,
+        })));
+      }
+    }).catch(() => setErr("Backend not reachable"));
     api.trending().then(setTrend).catch(() => {});
+    if (isLoggedIn()) api.prefs().then(setPrefs).catch(() => {});
   }, []);
 
   if (err) return <p>{err}</p>;
@@ -22,6 +31,9 @@ export default function Home() {
       <SkeletonGrid />
     </div>
   );
+
+  const recent = prefs?.inferred.recent_categories.slice(0, 3).map((c) => c.category) || [];
+  const longTerm = prefs?.inferred.long_term_categories.slice(0, 3).map((c) => c.category) || [];
 
   return (
     <div>
@@ -33,6 +45,12 @@ export default function Home() {
           {feed.fallback_used ? " · popular fallback" : " · personalised"} ·{" "}
           {feed.model_version || "no model loaded"}
         </p>
+        {prefs && (recent.length > 0 || longTerm.length > 0) && (
+          <p className="muted">
+            <History size={13} style={{ verticalAlign: -2 }} /> Recent: {recent.join(", ") || "—"} ·
+            Long-term: {longTerm.join(", ") || "—"}
+          </p>
+        )}
       </div>
       {feed.recommendations.length === 0 ? (
         <EmptyState
@@ -44,7 +62,7 @@ export default function Home() {
       ) : (
         <div className="grid">
           {feed.recommendations.map((r) => (
-            <ProductCard key={r.product_id} p={r.product} reason={r.explanation} />
+            <ProductCard key={r.product_id} p={r.product} reason={r.explanation} codes={r.reason_codes} />
           ))}
         </div>
       )}
@@ -53,7 +71,7 @@ export default function Home() {
           <h2><TrendingUp size={18} style={{ verticalAlign: -3 }} /> Trending now</h2>
           <div className="grid">
             {trend!.recommendations.slice(0, 3).map((r) => (
-              <ProductCard key={r.product_id} p={r.product} reason={r.explanation} />
+              <ProductCard key={r.product_id} p={r.product} reason={r.explanation} codes={r.reason_codes} />
             ))}
           </div>
         </div>

@@ -19,6 +19,12 @@ export default function Auth() {
         <h1>Account</h1>
         <p className="muted">You are signed in on this device.</p>
         <div className="row">
+          <button className="ghost" onClick={() => nav("/saved")}>Saved</button>
+          <button className="ghost" onClick={() => nav("/history")}>History</button>
+          <button className="ghost" onClick={() => nav("/preferences")}>Preferences</button>
+        </div>
+        <div className="row">
+          <button className="ghost" onClick={() => nav("/business")}>Business</button>
           <button className="ghost" onClick={() => { api.logout(); nav("/"); }}>
             Sign out
           </button>

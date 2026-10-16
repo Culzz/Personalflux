@@ -7,7 +7,18 @@ export function imageFor(p: Product) {
   return `https://picsum.photos/seed/${p.id}/600/450`;
 }
 
-function Card({ p, reason }: { p: Product; reason?: string }) {
+const labels: Record<string, string> = {
+  similar_to_session_items: "Recent views",
+  similar_to_history: "Your history",
+  item_similarity: "Often together",
+  popular: "Popular",
+  popular_in_category: "Popular here",
+  matches_stated_preference: "Your pick",
+  catalog_default: "Catalog",
+  popular_fallback: "Fallback",
+};
+
+function Card({ p, reason, codes }: { p: Product; reason?: string; codes?: string[] }) {
   return (
     <Link className="card" to={`/products/${p.id}`}>
       <img src={imageFor(p)} alt={p.title} loading="lazy" decoding="async" />
@@ -15,7 +26,14 @@ function Card({ p, reason }: { p: Product; reason?: string }) {
         {p.category && <span className="tag">{p.category}</span>}
         <div className="title">{p.title}</div>
         {p.price && <div className="price">${p.price}</div>}
-        {reason && <div className="muted" style={{ marginTop: 6 }}>{reason}</div>}
+        {(codes?.length || reason) && (
+          <div style={{ marginTop: 8, display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {(codes || []).slice(0, 2).map((c) => (
+              <span key={c} className="tag">{labels[c] || c.replace(/_/g, " ")}</span>
+            ))}
+          </div>
+        )}
+        {reason && <div className="muted" style={{ marginTop: 6 }}>Why this · {reason}</div>}
       </div>
     </Link>
   );

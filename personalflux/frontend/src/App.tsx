@@ -9,6 +9,8 @@ const ProductPage = lazy(() => import("./pages/ProductPage"));
 const Auth = lazy(() => import("./pages/Auth"));
 const Saved = lazy(() => import("./pages/Saved"));
 const Prefs = lazy(() => import("./pages/Preferences"));
+const HistoryPage = lazy(() => import("./pages/History"));
+const Business = lazy(() => import("./pages/Business"));
 
 export function toast(msg: string) {
   window.dispatchEvent(new CustomEvent("toast", { detail: msg }));
@@ -36,6 +38,7 @@ export default function App() {
           <NavLink to="/">For you</NavLink>
           <NavLink to="/discover">Discover</NavLink>
           <NavLink to="/saved">Saved</NavLink>
+          <NavLink to="/business">Business</NavLink>
           <NavLink to="/auth">Account</NavLink>
         </div>
       </div>
@@ -49,6 +52,8 @@ export default function App() {
             <Route path="/login" element={<Auth />} />
             <Route path="/saved" element={<Saved />} />
             <Route path="/preferences" element={<Prefs />} />
+            <Route path="/history" element={<HistoryPage />} />
+            <Route path="/business" element={<Business />} />
           </Routes>
         </Suspense>
       </main>

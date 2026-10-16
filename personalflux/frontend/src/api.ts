@@ -116,6 +116,11 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ product_id, event_type }),
     }).catch(() => null),
+  impressions: (request_id: string, model_version: string | null, items: { product_id: string; position: number }[]) =>
+    req("/api/v1/recommendations/impressions", {
+      method: "POST",
+      body: JSON.stringify({ request_id, model_version, items }),
+    }).catch(() => null),
   saved: (): Promise<{ product: Product }[]> => req("/api/v1/customers/me/saved"),
   save: (id: string) =>
     req(`/api/v1/customers/me/saved/${id}`, { method: "PUT" }).catch(() =>
@@ -126,6 +131,14 @@ export const api = {
     ),
   unsave: (id: string) => req(`/api/v1/customers/me/saved/${id}`, { method: "DELETE" }).catch(() => null),
   prefs: (): Promise<Prefs> => req("/api/v1/customers/me/preferences"),
+  history: (): Promise<{ product: Product }[]> => req("/api/v1/customers/me/history").catch(() => []),
+  overview: (days = 30) => req(`/api/v1/analytics/overview?days=${days}`).catch(() => null),
+  analyticsCategories: (days = 30) => req(`/api/v1/analytics/categories?days=${days}`).catch(() => null),
+  segments: (days = 30) => req(`/api/v1/analytics/segments?days=${days}`).catch(() => null),
+  recPerf: (days = 30) => req(`/api/v1/analytics/recommendations?days=${days}`).catch(() => null),
+  mlHealth: () => req("/api/v1/ml/health").catch(() => null),
+  models: () => req("/api/v1/ml/models").catch(() => null),
+  experiments: () => req("/api/v1/ml/experiments").catch(() => null),
   updatePrefs: (body: object): Promise<Prefs> =>
     req("/api/v1/customers/me/preferences", { method: "PATCH", body: JSON.stringify(body) }),
   resetPrefs: (): Promise<Prefs> => req("/api/v1/customers/me/preferences", { method: "DELETE" }),

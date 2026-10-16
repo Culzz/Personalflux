@@ -57,7 +57,7 @@ export default function ProductPage() {
       <h3 style={{ marginTop: 28 }}>Often looked at together</h3>
       <div className="grid">
         {(similar?.recommendations || []).map((r) => (
-          <ProductCard key={r.product_id} p={r.product} reason={r.explanation} />
+          <ProductCard key={r.product_id} p={r.product} reason={r.explanation} codes={r.reason_codes} />
         ))}
       </div>
     </div>
