@@ -33,7 +33,7 @@ def _issue_session(db: Session, user: User, response: Response) -> TokenOut:
     db.commit()
     response.set_cookie(
         COOKIE, raw, max_age=settings.refresh_token_expire_days * 86400,
-        httponly=True, secure=settings.is_production, samesite="lax", path=_cookie_path(),
+        httponly=True, secure=settings.is_production, samesite="strict", path=_cookie_path(),
     )
     return TokenOut(
         access_token=create_access_token(user.id, user.role),
@@ -103,7 +103,8 @@ def logout(request: Request, response: Response, db: Session = Depends(get_db)):
         if row is not None and row.revoked_at is None:
             row.revoked_at = datetime.now(timezone.utc)
             db.commit()
-    response.delete_cookie(COOKIE, path=_cookie_path())
+    response.delete_cookie(COOKIE, path=_cookie_path(), httponly=True,
+                             secure=settings.is_production, samesite="strict")
 
 
 @router.get("/me", response_model=UserOut)

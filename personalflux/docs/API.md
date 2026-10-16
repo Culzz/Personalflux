@@ -1,4 +1,4 @@
-# PersonaFlux API (v0.2)
+# PersonaFlux API (v0.3)
 
 Base URL in development: `http://localhost:8000`. Interactive docs: `/docs` (disabled when `APP_ENV=production`).
 All application routes live under `/api/v1`. Health checks are at `/health` (liveness) and `/health/db` (database readiness).
@@ -6,13 +6,19 @@ All application routes live under `/api/v1`. Health checks are at `/health` (liv
 ## Authentication
 
 - `POST /auth/login` or `/auth/register` returns a short-lived **access token** (JWT, default 30 minutes) in the body.
-  Send it as `Authorization: Bearer <token>`.
-- The same response sets an **HttpOnly refresh cookie** (`refresh_token`, `SameSite=Lax`, path `/api/v1/auth`,
-  `Secure` when `APP_ENV=production`). Browsers must call the API with `credentials: "include"`.
-- `POST /auth/refresh` rotates the refresh token (each works once). Reusing an old one ends every session of that user.
+  Send it as `Authorization: Bearer <token>`. The token lives in frontend memory only, never in storage.
+- The same response sets an **HttpOnly refresh cookie** (`refresh_token`, `SameSite=Strict`, path `/api/v1/auth`,
+  `Secure` when `APP_ENV=production`). Browsers must call the API with `credentials: "include"`. Strict means the
+  cookie is never sent on navigation from another site; silent refresh only happens on same-site API calls.
+- `POST /auth/refresh` rotates the refresh token (each works once) and sets the replacement cookie. Reusing an old
+  one ends every session of that user, on suspicion of theft. Two tabs racing a refresh do not log each other out:
+  the winner shares the new tokens through a same-origin storage event and the loser retries once with the fresh
+  cookie before treating a second 401 as a dead session.
+- `POST /auth/logout` revokes the refresh token in the database and clears the cookie with matching flags, and the
+  client drops its in-memory token plus saved-ids cache.
 - Identity always comes from the token. No endpoint accepts a user id from the client.
 - Anonymous visitors send `X-Session-Id` (8-64 characters: letters, digits, `-`, `_`) instead of a token.
-- Roles: `customer`, `analyst`, `admin`, `ml_engineer`.
+- Roles: `customer`, `analyst`, `admin`, `ml_engineer`. Registration creates `customer` accounts only.
 
 ## Conventions
 

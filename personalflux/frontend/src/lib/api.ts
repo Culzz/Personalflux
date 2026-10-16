@@ -93,7 +93,33 @@ async function parse<T>(res: Response): Promise<T> {
 
 let refreshing: Promise<TokenResponse | null> | null = null;
 
-async function doRefresh(): Promise<TokenResponse | null> {
+type AuthBroadcast = { access_token: string; expires_in: number; user: TokenResponse["user"] };
+const localListeners = new Set<(d: AuthBroadcast) => void>();
+
+/** In-process subscribers, so adoption is testable without cross-tab transport. */
+export function subscribeAuthBroadcast(fn: (d: AuthBroadcast) => void): () => void {
+  localListeners.add(fn);
+  return () => { localListeners.delete(fn); };
+}
+
+export const AUTH_SYNC_KEY = "pf-auth-sync";
+
+/** Share fresh tokens: same-tab subscribers directly, other tabs via a storage event. */
+export function notifyAuthRefreshed(data: TokenResponse): void {
+  const msg: AuthBroadcast = { access_token: data.access_token, expires_in: data.expires_in, user: data.user };
+  for (const fn of [...localListeners]) {
+    try { fn(msg); } catch { /* one bad listener must not break the others */ }
+  }
+  // A storage event fires in every OTHER tab with the key, which is exactly
+  // the audience that needs it. Same-tab adoption goes through localListeners.
+  try {
+    localStorage.setItem(AUTH_SYNC_KEY, JSON.stringify({ ...msg, at: Date.now() }));
+  } catch {
+    /* private mode etc: other tabs just refresh on their own */
+  }
+}
+
+async function attemptRefresh(): Promise<TokenResponse | null> {
   try {
     const res = await fetch(`${API_ROOT}/auth/refresh`, { method: "POST", credentials: "include" });
     if (res.status === 401) {
@@ -103,10 +129,21 @@ async function doRefresh(): Promise<TokenResponse | null> {
     if (!res.ok) return null;
     const data = (await res.json()) as TokenResponse;
     accessToken = data.access_token;
+    notifyAuthRefreshed(data);
     return data;
   } catch {
     return null; // network problem: keep the current state, do not log the user out
   }
+}
+
+async function doRefresh(): Promise<TokenResponse | null> {
+  const first = await attemptRefresh();
+  if (first) return first;
+  // Another tab may have rotated the single-use cookie just ahead of us, and
+  // its replacement is already in the shared jar. One retry tells a race
+  // (succeeds) from a dead session (fails again).
+  await new Promise((r) => setTimeout(r, 120));
+  return attemptRefresh();
 }
 
 /**

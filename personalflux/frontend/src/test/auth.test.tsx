@@ -2,6 +2,7 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { apiError, baseRoutes, mockApi, renderApp, signedIn, token, user } from "./utils";
+import { notifyAuthRefreshed } from "../lib/api";
 
 describe("signing in and out", () => {
   it("sends anonymous visitors from a protected page to sign in", async () => {
@@ -72,8 +73,8 @@ describe("signing in and out", () => {
     localStorage.setItem("pf_has_session", "1");
     mockApi(baseRoutes({ "POST /auth/refresh": apiError(401, "unauthorized", "Invalid session.") }));
     renderApp("/");
+    await waitFor(() => expect(localStorage.getItem("pf_has_session")).toBeNull());
     expect(await screen.findByRole("link", { name: "Sign in" })).toBeInTheDocument();
-    expect(localStorage.getItem("pf_has_session")).toBeNull();
   });
 
   it("does not even try a refresh for a visitor who never signed in", async () => {
@@ -92,5 +93,14 @@ describe("signing in and out", () => {
     expect(await screen.findByRole("link", { name: "Sign in" })).toBeInTheDocument();
     expect(m.called("POST /auth/logout")).toHaveLength(1);
     expect(localStorage.getItem("pf_has_session")).toBeNull();
+  });
+
+  it("adopts a refresh done by another tab without spending its own cookie", async () => {
+    const m = mockApi(baseRoutes());
+    renderApp("/");
+    await screen.findByRole("heading", { name: "Recommended for you" });
+    notifyAuthRefreshed({ access_token: "tok-2", token_type: "bearer", expires_in: 1800, user: user() });
+    expect(await screen.findByText("ann@shop.dev")).toBeInTheDocument();
+    expect(m.called("POST /auth/refresh")).toHaveLength(0);
   });
 });

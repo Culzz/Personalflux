@@ -24,7 +24,7 @@ def test_register_returns_token_and_sets_httponly_cookie(client, db):
     assert body["token_type"] == "bearer" and body["user"]["role"] == "customer"
     assert "password" not in r.text
     set_cookie = r.headers["set-cookie"].lower()
-    assert "refresh_token=" in set_cookie and "httponly" in set_cookie and "samesite=lax" in set_cookie
+    assert "refresh_token=" in set_cookie and "httponly" in set_cookie and "samesite=strict" in set_cookie
 
 
 def test_password_is_stored_as_argon2id_hash(client, db):

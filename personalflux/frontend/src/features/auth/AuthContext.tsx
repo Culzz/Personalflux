@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { refreshSession, setAccessToken, setAuthLostHandler } from "../../lib/api";
+import { AUTH_SYNC_KEY, refreshSession, setAccessToken, setAuthLostHandler, subscribeAuthBroadcast } from "../../lib/api";
 import { authApi } from "../../lib/endpoints";
 import { hasSessionFlag, readConsent, setSessionFlag } from "../../lib/storage";
 import type { TokenResponse, User } from "../../lib/types";
@@ -43,8 +43,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     setAuthLostHandler(drop);
-    if (!hasSessionFlag()) return () => setAuthLostHandler(null);
-    let alive = true;
+    if (!hasSessionFlag()) return () => setAuthLostHandler(null);    let alive = true;
     refreshSession().then((res) => {
       if (!alive) return;
       if (res) adopt(res);
@@ -55,6 +54,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setAuthLostHandler(null);
     };
   }, [adopt, drop]);
+
+  useEffect(() => {
+    // Another tab refreshed first: adopt its tokens instead of spending our
+    // (already rotated) cookie and tripping the reuse alarm.
+    const take = (d: { access_token?: string; expires_in?: number; user?: User } | null) => {
+      if (d?.access_token && d.user) {
+        adopt({ access_token: d.access_token, token_type: "bearer",
+                expires_in: d.expires_in ?? 0, user: d.user });
+      }
+    };
+    const off = subscribeAuthBroadcast(take);
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== AUTH_SYNC_KEY || !e.newValue) return;
+      try { take(JSON.parse(e.newValue)); } catch { /* ignore malformed */ }
+    };
+    window.addEventListener("storage", onStorage);
+    return () => { off(); window.removeEventListener("storage", onStorage); };
+  }, [adopt]);
 
   const login = useCallback(
     async (email: string, password: string) => adopt(await authApi.login(email, password)),
