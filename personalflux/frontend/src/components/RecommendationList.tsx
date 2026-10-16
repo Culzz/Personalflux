@@ -42,6 +42,7 @@ export function RecommendationList({ data, onDismiss }: Props) {
           <ProductCard
             product={r.product}
             explanation={r.explanation}
+            reasons={r.reason_codes}
             onOpen={() =>
               track("click", r.product_id, {
                 source: "recommendation",

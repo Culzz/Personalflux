@@ -50,8 +50,7 @@ export const eventsApi = {
   }) => api<unknown>("/events", { method: "POST", body }),
 };
 
-export const customerApi = {
-  preferences: (signal?: Sig) => api<PreferencesResponse>("/customers/me/preferences", { signal }),
+export const customerApi = {  preferences: (signal?: Sig) => api<PreferencesResponse>("/customers/me/preferences", { signal }),
   updatePreferences: (body: {
     liked_categories?: string[]; blocked_categories?: string[];
     price_range?: { min: string | null; max: string | null } | null;
@@ -71,4 +70,52 @@ export const customerApi = {
   exportData: () => api<unknown>("/customers/me/export"),
   deleteAccount: (password: string) =>
     api<void>("/customers/me/delete", { method: "POST", body: { password } }),
+};
+
+export interface AnalyticsOverview {
+  kind: string;
+  window_days: number;
+  customers_total: number;
+  events_total: number;
+  events_by_type: Record<string, number>;
+  active_customers: number | null;
+  anonymous_sessions: number | null;
+  impressions: number;
+}
+
+export interface AnalyticsCategories {
+  categories: { category: string; events: number; views: number; add_to_cart: number; purchases: number }[];
+}
+
+export interface AnalyticsSegments {
+  segments: { segment: string; customers: number }[];
+}
+
+export interface AnalyticsRecs {
+  impressions: number;
+  recommendation_requests_with_impressions: number;
+  engagement_from_recommendations: Record<string, number>;
+  click_through_rate: number | null;
+}
+
+export interface MlHealth {
+  status: string;
+  model_loaded: boolean;
+  model_version: string | null;
+  fallback_mode: string | null;
+}
+
+export const analyticsApi = {
+  overview: (days = 30, signal?: Sig) =>
+    api<AnalyticsOverview>("/analytics/overview", { query: { days }, signal }).catch(() => null),
+  categories: (days = 30, signal?: Sig) =>
+    api<AnalyticsCategories>("/analytics/categories", { query: { days }, signal }).catch(() => null),
+  segments: (days = 30, signal?: Sig) =>
+    api<AnalyticsSegments>("/analytics/segments", { query: { days }, signal }).catch(() => null),
+  recs: (days = 30, signal?: Sig) =>
+    api<AnalyticsRecs>("/analytics/recommendations", { query: { days }, signal }).catch(() => null),
+};
+
+export const mlApi = {
+  health: (signal?: Sig) => api<MlHealth>("/ml/health", { signal }).catch(() => null),
 };

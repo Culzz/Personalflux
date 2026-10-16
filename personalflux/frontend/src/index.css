@@ -1,21 +1,89 @@
 @import "tailwindcss";
 
 @theme {
-  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-sans: "Instrument Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-display: "Fraunces", Georgia, "Times New Roman", serif;
+
+  /* Vintage paper scale (remapped slate) */
+  --color-slate-50: #fdfbf7;
+  --color-slate-100: #1c1a17;
+  --color-slate-200: #2b2620;
+  --color-slate-300: #4a443c;
+  --color-slate-400: #6f675e;
+  --color-slate-500: #6f675e;
+  --color-slate-600: #857a6c;
+  --color-slate-700: #d9cdb2;
+  --color-slate-800: #e9e0cb;
+  --color-slate-900: #ffffff;
+  --color-slate-950: #faf7f0;
+
+  /* Brass accent (remapped violet) */
+  --color-violet-300: #7a5c2e;
+  --color-violet-400: #7a5c2e;
+  --color-violet-500: #6b5027;
+  --color-violet-600: #7a5c2e;
+
+  /* Soft red for errors on light backgrounds */
+  --color-red-200: #9c2b1a;
+  --color-red-300: #a02c12;
+  --color-red-600: #7e2315;
+  --color-red-700: #9c2b1a;
+  --color-red-900: #e3b49e;
+  --color-red-950: #fdf1ec;
+
+  --color-paper: #faf7f0;
+  --color-ink: #1c1a17;
+  --color-line: #e9e0cb;
+  --color-brass: #7a5c2e;
 }
 
 html {
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 body {
   @apply bg-slate-950 text-slate-100 antialiased;
 }
 
+h1, h2, h3 {
+  font-family: var(--font-display);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
 /* Visible keyboard focus everywhere */
 :focus-visible {
-  outline: 2px solid #a78bfa;
+  outline: 2px solid #7a5c2e;
   outline-offset: 2px;
+}
+
+/* Mobile bottom tab bar */
+.tabbar {
+  position: fixed;
+  inset-inline: 0;
+  bottom: 0;
+  z-index: 40;
+  display: flex;
+  background: #ffffff;
+  border-top: 1px solid var(--color-line);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.tabbar a {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-height: 62px;
+  padding: 10px 0 8px;
+  font-size: 11px;
+  color: var(--color-slate-400);
+}
+.tabbar a.active {
+  color: var(--color-ink);
+}
+.tabbar a.active svg {
+  color: var(--color-brass);
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -70,7 +70,7 @@ describe("demo cart", () => {
     expect(screen.getByRole("button", { name: "In cart" })).toBeDisabled();
     await waitFor(() => expect(m.called("POST /events").some((c) => c.body.event_type === "add_to_cart")).toBe(true));
 
-    await u.click(screen.getByRole("link", { name: /Cart/ }));
+    await u.click(screen.getAllByRole("link", { name: /Cart/ })[0]);
     expect(await screen.findByText(/no payment and no real order/i)).toBeInTheDocument();
     await u.click(screen.getByRole("button", { name: "Place demo order" }));
 
@@ -86,7 +86,7 @@ describe("demo cart", () => {
     renderApp("/products/p1");
     const u = userEvent.setup();
     await u.click(await screen.findByRole("button", { name: "Add to cart" }));
-    await u.click(screen.getByRole("link", { name: /Cart/ }));
+    await u.click(screen.getAllByRole("link", { name: /Cart/ })[0]);
     await u.click(await screen.findByRole("button", { name: "Place demo order" }));
     expect(await screen.findByRole("status")).toHaveTextContent("was not recorded");
     expect(m.called("POST /events")).toHaveLength(0);

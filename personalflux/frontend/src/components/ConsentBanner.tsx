@@ -9,7 +9,7 @@ export function ConsentBanner() {
   return (
     <section
       aria-label="Privacy choices"
-      className="fixed inset-x-0 bottom-0 z-50 border-t border-slate-700 bg-slate-900 p-4 shadow-xl"
+      className="fixed inset-x-0 bottom-[68px] z-50 border-t border-slate-700 bg-slate-900 p-4 shadow-xl md:bottom-0"
     >
       <div className="mx-auto flex max-w-5xl flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm text-slate-200">
