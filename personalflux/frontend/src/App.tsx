@@ -8,11 +8,13 @@ import { ConsentProvider } from "./features/consent/ConsentContext";
 import { SavedProvider } from "./features/saved/SavedContext";
 import { LoginPage, RegisterPage } from "./pages/AuthPages";
 import AboutPage from "./pages/AboutPage";
+import AdminPage from "./pages/AdminPage";
 import BusinessPage from "./pages/BusinessPage";
 import CartPage from "./pages/CartPage";
 import DiscoverPage from "./pages/DiscoverPage";
 import HistoryPage from "./pages/HistoryPage";
 import HomePage from "./pages/HomePage";
+import MLPage from "./pages/MLPage";
 import NotFoundPage from "./pages/NotFoundPage";
 import PreferencesPage from "./pages/PreferencesPage";
 import ProductPage from "./pages/ProductPage";
@@ -45,6 +47,8 @@ export default function App() {
           <Route path="login" element={<LoginPage />} />
           <Route path="register" element={<RegisterPage />} />
           <Route element={<RequireAuth />}>
+            <Route path="ml" element={<MLPage />} />
+            <Route path="admin" element={<AdminPage />} />
             <Route path="saved" element={<SavedPage />} />
             <Route path="preferences" element={<PreferencesPage />} />
             <Route path="history" element={<HistoryPage />} />

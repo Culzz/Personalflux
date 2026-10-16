@@ -26,6 +26,10 @@ export const productsApi = {
   get: (id: string, signal?: Sig) => api<Product>(`/products/${id}`, { signal }),
   categories: (signal?: Sig) => api<CategoryCount[]>("/products/categories", { signal }),
   related: (id: string, signal?: Sig) => api<Product[]>(`/products/${id}/related`, { signal }),
+  create: (body: { title: string; description?: string | null; category?: string | null; price?: string | null; image_url?: string | null; is_active?: boolean }) =>
+    api<Product>("/products", { method: "POST", body }),
+  update: (id: string, body: { title?: string; description?: string | null; category?: string | null; price?: string | null; image_url?: string | null; is_active?: boolean }) =>
+    api<Product>(`/products/${id}`, { method: "PATCH", body }),
 };
 
 export const recsApi = {
@@ -118,4 +122,50 @@ export const analyticsApi = {
 
 export const mlApi = {
   health: (signal?: Sig) => api<MlHealth>("/ml/health", { signal }).catch(() => null),
+  models: (signal?: Sig) => api<{ serving: string | null; versions: ModelVersion[] }>("/ml/models", { signal }),
+  scan: () => api<{ added: ModelVersion[] }>("/ml/models/scan", { method: "POST" }),
+  promote: (version: string) => api<ModelVersion>(`/ml/models/${encodeURIComponent(version)}/promote`, { method: "POST" }),
+  experiments: (signal?: Sig) => api<Experiment[]>("/ml/experiments", { signal }),
+};
+
+export interface ModelVersion {
+  version: string;
+  status: string;
+  details: string | null;
+  created_at: string;
+  promoted_at: string | null;
+}
+
+export interface Experiment {
+  id: string;
+  name: string;
+  configuration: Record<string, unknown>;
+  created_at: string;
+  kind: string;
+  runs: { model_version: string; metrics: Record<string, number> }[];
+}
+
+export interface AdminUser {
+  id: string;
+  email: string;
+  role: string;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface AuditLog {
+  id: string;
+  actor_user_id: string | null;
+  action: string;
+  target_type: string;
+  target_id: string | null;
+  details: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export const adminApi = {
+  users: (signal?: Sig) => api<AdminUser[]>("/admin/users", { signal }),
+  updateUser: (id: string, body: { role?: string; is_active?: boolean }) =>
+    api<AdminUser>(`/admin/users/${id}`, { method: "PATCH", body }),
+  auditLogs: (signal?: Sig) => api<AuditLog[]>("/admin/audit-logs", { signal }),
 };

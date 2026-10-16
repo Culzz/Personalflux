@@ -33,6 +33,12 @@ export function Layout() {
               Cart{items.length > 0 && <span className="ml-1 rounded-full bg-violet-600 px-1.5 text-xs text-white">{items.length}</span>}
             </NavLink>
             <NavLink to="/business" className={link}>Business</NavLink>
+            {user && ["analyst", "ml_engineer", "admin"].includes(user.role) && (
+              <NavLink to="/ml" className={link}>ML</NavLink>
+            )}
+            {user?.role === "admin" && (
+              <NavLink to="/admin" className={link}>Admin</NavLink>
+            )}
           </nav>
           <div className="flex items-center gap-2 text-sm">
             {status === "authenticated" && user ? (
@@ -43,6 +49,12 @@ export function Layout() {
                   <Link className="rounded px-3 py-2.5 hover:bg-slate-800" to="/history">History</Link>
                   <Link className="rounded px-3 py-2.5 hover:bg-slate-800" to="/settings">Settings</Link>
                   <Link className="rounded px-3 py-2.5 hover:bg-slate-800" to="/business">Business</Link>
+                  {["analyst", "ml_engineer", "admin"].includes(user.role) && (
+                    <Link className="rounded px-3 py-2.5 hover:bg-slate-800" to="/ml">ML console</Link>
+                  )}
+                  {user.role === "admin" && (
+                    <Link className="rounded px-3 py-2.5 hover:bg-slate-800" to="/admin">Admin</Link>
+                  )}
                   <button
                     className="rounded px-3 py-2.5 text-left hover:bg-slate-800"
                     onClick={async () => {
