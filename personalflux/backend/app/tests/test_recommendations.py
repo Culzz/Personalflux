@@ -104,6 +104,17 @@ def test_stated_category_preference_shapes_cold_start_and_is_explained(client, d
     assert "matches_stated_preference" in body["recommendations"][0]["reason_codes"]
 
 
+def test_stated_like_reshapes_the_personalised_feed(client, db, products, model):
+    h = user_headers(client, db, "u@shop.dev", consent=True)
+    client.patch("/api/v1/customers/me/preferences", headers=h,
+                 json={"liked_categories": ["Category B"]})
+    view(client, products[10], h)          # the model leans toward Item 20 (Category A) here
+    body = client.get(f"{R}/home", headers=h).json()
+    assert body["strategy"] == "session_based"
+    assert body["recommendations"][0]["product"]["category"] == "Category B"
+    assert "matches_stated_preference" in body["recommendations"][0]["reason_codes"]
+
+
 def test_category_context_filters_the_feed(client, products, model):
     body = client.get(f"{R}/home", params={"category": "Category B"}).json()
     assert titles(body) == ["Item 30", "Item 40"]

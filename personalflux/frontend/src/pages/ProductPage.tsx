@@ -6,6 +6,7 @@ import { RecommendationList } from "../components/RecommendationList";
 import { SaveButton } from "../components/SaveButton";
 import { CardSkeletons, EmptyState, ErrorState, PageLoading } from "../components/States";
 import { useCart } from "../features/cart/CartContext";
+import { RecommendationTuner } from "../features/preferences/RecommendationTuner";
 import { useTracking } from "../features/tracking/useTracking";
 import { useAsync } from "../hooks/useAsync";
 import { ApiError } from "../lib/api";
@@ -85,6 +86,14 @@ export default function ProductPage() {
               {inCart ? "In cart" : "Add to cart"}
             </button>
             <SaveButton product={p} />
+          </div>
+          <div className="space-y-1.5">
+            <RecommendationTuner product={p} />
+            <p className="text-xs text-slate-500">
+              These tune your{" "}
+              <Link className="underline" to="/preferences">stated preferences</Link>
+              , which you can reset any time. Behaviour-based signals are kept separate.
+            </p>
           </div>
         </div>
       </div>

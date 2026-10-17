@@ -162,6 +162,8 @@ def _db_popular(db: Session, sig: Signals, category: str | None, need: int,
         out.append(Rec(p, 0.0, source, reasons, expl))
         if len(out) == need:
             break
+    if sig.liked and category is None:
+        out.sort(key=lambda r: 0 if r.product.category in sig.liked else 1)
     return out
 
 
@@ -233,6 +235,11 @@ def recommend_home(db: Session, actor: Actor, limit: int, category: str | None =
             if results:
                 strategy = ("personalized_hybrid" if (s and l)
                             else "session_based" if s else "history_based")
+
+    if sig.liked and category is None:
+        # A stated like reshapes the feed even when the model would have buried
+        # those categories. Stable sort, so score order still holds within a group.
+        results.sort(key=lambda r: 0 if r.product.category in sig.liked else 1)
 
     if len(results) < limit:
         used = {r.product.id for r in results}

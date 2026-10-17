@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
-import { apiError, baseRoutes, feed, mockApi, product, rec, renderApp } from "./utils";
+import { apiError, baseRoutes, feed, mockApi, product, rec, renderApp, signedIn } from "./utils";
 
 const p1 = product("p1", { price: "19.99" });
 const p2 = product("p2");
@@ -48,6 +48,38 @@ describe("product page", () => {
     expect(screen.getByText(/Only 3 left/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /View at source/ }))
       .toHaveAttribute("href", "https://dummyjson.com/products/1");
+  });
+
+  it("asks anonymous visitors to sign in before tuning recommendations", async () => {
+    mockApi(productRoutes());
+    renderApp("/products/p1");
+    await screen.findByRole("heading", { name: "Item p1" });
+    const u = userEvent.setup();
+    await u.click(screen.getByRole("button", { name: "More like this" }));
+    expect(await screen.findByText(/Sign in to tune your recommendations/)).toBeInTheDocument();
+  });
+
+  it("records a stated preference when a signed-in shopper asks for more like this", async () => {
+    const empty = { long_term_categories: [], recent_categories: [], events_considered: 0, note: "" };
+    const m = mockApi(signedIn({
+      ...productRoutes(),
+      "GET /customers/me/preferences": {
+        explicit: { liked_categories: ["Beauty"] }, inferred: empty, profile_reset_at: null,
+      },
+      "PATCH /customers/me/preferences": (c) => ({
+        explicit: c.body, inferred: empty, profile_reset_at: null,
+      }),
+    }));
+    renderApp("/products/p1");
+    await screen.findByRole("heading", { name: "Item p1" });
+    const u = userEvent.setup();
+    await u.click(screen.getByRole("button", { name: "More like this" }));
+
+    await waitFor(() => expect(m.called("PATCH /customers/me/preferences")).toHaveLength(1));
+    const body = m.called("PATCH /customers/me/preferences")[0].body;
+    expect(body.liked_categories).toEqual(["Beauty", "Category A"]);  // appended, not replaced
+    expect(body.blocked_categories).toEqual([]);
+    expect(await screen.findByText(/more from Category A/)).toBeInTheDocument();
   });
 
   it("records one view with an idempotency key when tracking is on", async () => {
