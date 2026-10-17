@@ -10,7 +10,9 @@ from app.db.session import get_db
 from app.models import Product, RecommendationImpression
 from app.schemas.product import ProductOut
 from app.schemas.recommendation import (FeedbackIn, ImpressionsIn, RecommendationItem,
-                                        RecommendationResponse)
+                                        RecommendationResponse, StatedPreferences,
+                                        StatedPreferencesPatch)
+from app.services import preferences as prefs
 from app.services import recommendation as reco
 from app.services.events import store_event
 
@@ -31,6 +33,16 @@ def _respond(request: Request, result: reco.RecResult) -> RecommendationResponse
                 reason_codes=r.reason_codes, explanation=r.explanation)
             for i, r in enumerate(result.items)
         ],
+    )
+
+
+def _stated(db: Session, actor: Actor) -> StatedPreferences:
+    values = prefs.explicit_prefs(db, actor)
+    return StatedPreferences(
+        liked_categories=values.get("liked_categories") or [],
+        blocked_categories=values.get("blocked_categories") or [],
+        liked_brands=values.get("liked_brands") or [],
+        price_range=values.get("price_range"),
     )
 
 
@@ -55,6 +67,37 @@ def trending(request: Request, limit: int = Query(12, ge=1, le=50),
              category: str | None = Query(None, max_length=100),
              db: Session = Depends(get_db)):
     return _respond(request, reco.recommend_trending(db, limit, category))
+
+
+@router.get("/preferences", response_model=StatedPreferences)
+def get_stated_preferences(actor: Actor = Depends(get_actor), db: Session = Depends(get_db)):
+    """Stated preferences for whoever is asking: an account, or an anonymous session."""
+    return _stated(db, actor)
+
+
+@router.patch("/preferences", response_model=StatedPreferences)
+def update_stated_preferences(payload: StatedPreferencesPatch,
+                              actor: Actor = Depends(require_actor),
+                              db: Session = Depends(get_db)):
+    """Sets stated preferences without requiring an account, so first-visit
+    onboarding works before anyone registers. Send only what changes."""
+    for ptype in payload.model_fields_set:
+        value = getattr(payload, ptype)
+        if ptype in prefs.NAME_TYPES:
+            names = prefs.clean_names(value)
+            if names:
+                prefs.set_pref(db, actor, ptype, names)
+            else:
+                prefs.clear_pref(db, actor, ptype)
+        elif ptype == "price_range":
+            if value is None or (value.min is None and value.max is None):
+                prefs.clear_pref(db, actor, ptype)
+            else:
+                prefs.set_pref(db, actor, ptype, {
+                    "min": str(value.min) if value.min is not None else None,
+                    "max": str(value.max) if value.max is not None else None})
+    db.commit()
+    return _stated(db, actor)
 
 
 @router.post("/impressions")

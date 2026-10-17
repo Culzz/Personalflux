@@ -26,6 +26,18 @@ def test_filters_sort_and_pagination(client, products):
     assert page2["total"] == 4 and len(page2["items"]) == 2 and page2["page"] == 2
 
 
+def test_brands_lists_only_active_brands_by_count(client, db, products):
+    products[10].brand = "Nova"
+    products[20].brand = "Nova"
+    products[30].brand = "Solo"
+    products[40].brand = "Solo"
+    products[40].is_active = False           # a retired product's brand is not offered
+    db.commit()
+    assert client.get(f"{P}/brands").json() == [
+        {"brand": "Nova", "products": 2}, {"brand": "Solo", "products": 1},
+    ]
+
+
 def test_page_size_and_sort_are_bounded(client, products):
     assert client.get(P, params={"page_size": 51}).status_code == 422
     assert client.get(P, params={"page": 0}).status_code == 422

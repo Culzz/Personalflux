@@ -21,7 +21,7 @@ export function RecommendationTuner({ product }: { product: Product }) {
   const navigate = useNavigate();
   const location = useLocation();
   const [busy, setBusy] = useState<Direction | null>(null);
-  const category = product.category;
+  const category: string = product.category ?? "";
   if (!category) return null;
 
   async function nudge(direction: Direction) {

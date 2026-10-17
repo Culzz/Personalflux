@@ -104,6 +104,33 @@ def test_stated_category_preference_shapes_cold_start_and_is_explained(client, d
     assert "matches_stated_preference" in body["recommendations"][0]["reason_codes"]
 
 
+def test_anonymous_session_preferences_shape_the_feed(client, products, model):
+    """Onboarding must work before anyone registers: no token, just a session id."""
+    h = session_headers("sess-onboard01")
+    saved = client.patch(f"{R}/preferences", headers=h, json={"liked_categories": ["Category B"]})
+    assert saved.status_code == 200
+    assert saved.json()["liked_categories"] == ["Category B"]
+    view(client, products[10], h)                    # the model leans toward Category A
+    body = client.get(f"{R}/home", headers=h).json()
+    assert body["recommendations"][0]["product"]["category"] == "Category B"
+
+
+def test_stated_preferences_are_readable_but_need_an_actor_to_write(client):
+    assert client.get(f"{R}/preferences").json()["liked_categories"] == []
+    r = client.patch(f"{R}/preferences", json={"liked_categories": ["Category A"]})
+    assert r.status_code == 400                      # neither a token nor a session id
+
+
+def test_a_stated_brand_pushes_that_brand_to_the_front(client, db, products):
+    products[20].brand = "Nova"
+    products[40].brand = "Nova"
+    db.commit()
+    h = session_headers("sess-brand01")
+    client.patch(f"{R}/preferences", headers=h, json={"liked_brands": ["Nova"]})
+    body = client.get(f"{R}/home", headers=h).json()
+    assert body["recommendations"][0]["product"]["brand"] == "Nova"
+
+
 def test_stated_like_reshapes_the_personalised_feed(client, db, products, model):
     h = user_headers(client, db, "u@shop.dev", consent=True)
     client.patch("/api/v1/customers/me/preferences", headers=h,

@@ -1,4 +1,4 @@
-# PersonaFlux API (v0.3)
+# PersonaFlux API (v0.4)
 
 Base URL in development: `http://localhost:8000`. Interactive docs: `/docs` (disabled when `APP_ENV=production`).
 All application routes live under `/api/v1`. Health checks are at `/health` (liveness) and `/health/db` (database readiness).
@@ -69,6 +69,7 @@ All application routes live under `/api/v1`. Health checks are at `/health` (liv
 | POST | `/api/v1/ml/training-runs` | ml_engineer, admin | Request Training Run |
 | GET | `/api/v1/products` | public | List Products |
 | POST | `/api/v1/products` | admin | Create Product |
+| GET | `/api/v1/products/brands` | public | List Brands |
 | GET | `/api/v1/products/categories` | public | List Categories |
 | GET | `/api/v1/products/{product_id}` | public | Get Product |
 | PATCH | `/api/v1/products/{product_id}` | admin | Update Product |
@@ -76,6 +77,8 @@ All application routes live under `/api/v1`. Health checks are at `/health` (liv
 | POST | `/api/v1/recommendations/feedback` | bearer token or X-Session-Id | Record Feedback |
 | GET | `/api/v1/recommendations/home` | public; bearer token or X-Session-Id personalises | Home Feed |
 | POST | `/api/v1/recommendations/impressions` | bearer token or X-Session-Id | Record Impressions |
+| GET | `/api/v1/recommendations/preferences` | bearer token or X-Session-Id | Get Stated Preferences |
+| PATCH | `/api/v1/recommendations/preferences` | bearer token or X-Session-Id | Update Stated Preferences |
 | GET | `/api/v1/recommendations/similar/{product_id}` | public; bearer token or X-Session-Id personalises | Similar |
 | GET | `/api/v1/recommendations/trending` | public; bearer token or X-Session-Id personalises | Trending |
 | GET | `/health` | see code | Health |

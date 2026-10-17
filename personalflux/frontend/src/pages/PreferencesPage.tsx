@@ -3,7 +3,7 @@ import { ErrorState, PageLoading } from "../components/States";
 import { useAsync } from "../hooks/useAsync";
 import { ApiError } from "../lib/api";
 import { customerApi, productsApi } from "../lib/endpoints";
-import type { CategoryCount, CategoryShare, PreferencesResponse } from "../lib/types";
+import type { BrandCount, CategoryCount, CategoryShare, PreferencesResponse } from "../lib/types";
 
 function Shares({ title, rows }: { title: string; rows: CategoryShare[] }) {
   return (
@@ -33,16 +33,27 @@ function Shares({ title, rows }: { title: string; rows: CategoryShare[] }) {
 interface EditorProps {
   initial: PreferencesResponse["explicit"];
   categories: CategoryCount[];
+  brands: BrandCount[];
   onSaved: () => void;
 }
 
 /** Starts with the saved values already in place (no empty first render). */
-function ExplicitEditor({ initial, categories, onSaved }: EditorProps) {
+function ExplicitEditor({ initial, categories, brands, onSaved }: EditorProps) {
   const [liked, setLiked] = useState<Set<string>>(() => new Set(initial.liked_categories ?? []));
   const [blocked, setBlocked] = useState<Set<string>>(() => new Set(initial.blocked_categories ?? []));
+  const [likedBrands, setLikedBrands] = useState<Set<string>>(() => new Set(initial.liked_brands ?? []));
   const [min, setMin] = useState(initial.price_range?.min ?? "");
   const [max, setMax] = useState(initial.price_range?.max ?? "");
   const [error, setError] = useState<string | null>(null);
+
+  function flip(setter: typeof setLiked, name: string) {
+    setter((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  }
 
   function toggle(setA: typeof setLiked, setB: typeof setBlocked, name: string) {
     setA((prev) => {
@@ -70,6 +81,7 @@ function ExplicitEditor({ initial, categories, onSaved }: EditorProps) {
       await customerApi.updatePreferences({
         liked_categories: [...liked],
         blocked_categories: [...blocked],
+        liked_brands: [...likedBrands],
         price_range: min || max ? { min: min || null, max: max || null } : null,
       });
       onSaved();
@@ -101,6 +113,20 @@ function ExplicitEditor({ initial, categories, onSaved }: EditorProps) {
           </fieldset>
         ))}
       </div>
+      {brands.length > 0 && (
+        <fieldset className="rounded-lg border border-slate-800 p-3">
+          <legend className="px-1 text-sm font-medium">Brands I like</legend>
+          <div className="grid max-h-48 grid-cols-1 gap-1 overflow-auto sm:grid-cols-2">
+            {brands.map((b) => (
+              <label key={b.brand} className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={likedBrands.has(b.brand)}
+                       onChange={() => flip(setLikedBrands, b.brand)} />
+                {b.brand}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+      )}
       <div className="flex flex-wrap gap-4">
         <div>
           <label htmlFor="pmin" className="mb-1 block text-xs text-slate-400">Min price</label>
@@ -122,6 +148,7 @@ function ExplicitEditor({ initial, categories, onSaved }: EditorProps) {
 export default function PreferencesPage() {
   const prefs = useAsync((s) => customerApi.preferences(s), []);
   const cats = useAsync((s) => productsApi.categories(s), []);
+  const brands = useAsync((s) => productsApi.brands(s), []);
   const [note, setNote] = useState<string | null>(null);
 
   async function reset(includeExplicit: boolean) {
@@ -152,6 +179,7 @@ export default function PreferencesPage() {
             key={JSON.stringify(prefs.data.explicit)}
             initial={prefs.data.explicit}
             categories={cats.data}
+            brands={brands.data ?? []}
             onSaved={() => {
               setNote("Preferences saved. They apply to your next recommendations.");
               prefs.reload();

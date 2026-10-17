@@ -89,17 +89,21 @@ What was actually shown, and where in the list. Feeds live-activity analytics.
 ## preferences
 
 Explicitly stated only. Inferred interests are computed per request, never stored.
+A row belongs to an account or to an anonymous session, so first-visit onboarding
+works before anyone registers.
 
 | column | type | notes |
 |---|---|---|
 | id | uuid | PK |
-| user_id | uuid | FK users, cascade |
-| preference_type | varchar(40) | `liked_categories` \| `blocked_categories` \| `price_range` |
+| user_id | uuid | FK users, cascade, null when the row belongs to a session |
+| session_id | varchar(64) | null when the row belongs to an account |
+| preference_type | varchar(40) | `liked_categories` \| `blocked_categories` \| `liked_brands` \| `price_range` |
 | preference_value | jsonb | list, or `{min,max}` for price |
 | source | varchar(10) | `explicit` \| `inferred`, default `explicit` |
 | updated_at | timestamptz | |
 
-Unique on (user_id, preference_type).
+Exactly one owner is set. Unique on (user_id, preference_type) and on
+(session_id, preference_type), both as partial indexes.
 
 ## refresh_tokens
 

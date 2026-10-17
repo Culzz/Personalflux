@@ -71,6 +71,7 @@ export interface PreferencesResponse {
   explicit: {
     liked_categories?: string[];
     blocked_categories?: string[];
+    liked_brands?: string[];
     price_range?: { min: string | null; max: string | null };
   };
   inferred: {
@@ -80,6 +81,19 @@ export interface PreferencesResponse {
     note: string;
   };
   profile_reset_at: string | null;
+}
+
+/** Stated preferences for an account or an anonymous session (first-visit onboarding). */
+export interface StatedPreferences {
+  liked_categories: string[];
+  blocked_categories: string[];
+  liked_brands: string[];
+  price_range: { min: string | null; max: string | null } | null;
+}
+
+export interface BrandCount {
+  brand: string;
+  products: number;
 }
 
 export interface ViewedProduct {

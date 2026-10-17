@@ -22,6 +22,7 @@ class PreferencesPatch(BaseModel):
     """Send only what you want to change. null or [] clears that preference."""
     liked_categories: list[str] | None = Field(default=None, max_length=20)
     blocked_categories: list[str] | None = Field(default=None, max_length=20)
+    liked_brands: list[str] | None = Field(default=None, max_length=20)
     price_range: PriceRange | None = None
 
 

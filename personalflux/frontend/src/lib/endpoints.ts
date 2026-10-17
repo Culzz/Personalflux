@@ -1,7 +1,7 @@
 import { api } from "./api";
 import type {
-  CategoryCount, EventType, PreferencesResponse, Product, ProductPage,
-  RecommendationResponse, SavedProduct, TokenResponse, User, ViewedProduct,
+  BrandCount, CategoryCount, EventType, PreferencesResponse, Product, ProductPage,
+  RecommendationResponse, SavedProduct, StatedPreferences, TokenResponse, User, ViewedProduct,
 } from "./types";
 
 type Sig = AbortSignal | undefined;
@@ -25,6 +25,7 @@ export const productsApi = {
   list: (query: ProductQuery, signal?: Sig) => api<ProductPage>("/products", { query: { ...query }, signal }),
   get: (id: string, signal?: Sig) => api<Product>(`/products/${id}`, { signal }),
   categories: (signal?: Sig) => api<CategoryCount[]>("/products/categories", { signal }),
+  brands: (signal?: Sig) => api<BrandCount[]>("/products/brands", { signal }),
   related: (id: string, signal?: Sig) => api<Product[]>(`/products/${id}/related`, { signal }),
   create: (body: { title: string; description?: string | null; category?: string | null; price?: string | null; image_url?: string | null; is_active?: boolean }) =>
     api<Product>("/products", { method: "POST", body }),
@@ -45,6 +46,12 @@ export const recsApi = {
   }) => api<unknown>("/recommendations/impressions", { method: "POST", body }),
   feedback: (body: { product_id: string; feedback: "save" | "dismiss"; request_id?: string | null }) =>
     api<unknown>("/recommendations/feedback", { method: "POST", body }),
+  statedPreferences: (signal?: Sig) =>
+    api<StatedPreferences>("/recommendations/preferences", { signal }),
+  updateStatedPreferences: (body: {
+    liked_categories?: string[]; blocked_categories?: string[]; liked_brands?: string[];
+    price_range?: { min: string | null; max: string | null } | null;
+  }) => api<StatedPreferences>("/recommendations/preferences", { method: "PATCH", body }),
 };
 
 export const eventsApi = {
@@ -56,7 +63,7 @@ export const eventsApi = {
 
 export const customerApi = {  preferences: (signal?: Sig) => api<PreferencesResponse>("/customers/me/preferences", { signal }),
   updatePreferences: (body: {
-    liked_categories?: string[]; blocked_categories?: string[];
+    liked_categories?: string[]; blocked_categories?: string[]; liked_brands?: string[];
     price_range?: { min: string | null; max: string | null } | null;
   }) => api<PreferencesResponse>("/customers/me/preferences", { method: "PATCH", body }),
   resetPreferences: (includeExplicit: boolean) =>

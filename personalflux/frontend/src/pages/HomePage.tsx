@@ -1,8 +1,10 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { RecommendationList } from "../components/RecommendationList";
 import { ProductCard } from "../components/ProductCard";
 import { CardSkeletons, EmptyState, ErrorState } from "../components/States";
 import { useAuth } from "../features/auth/AuthContext";
+import { OnboardingDialog, hasOnboarded } from "../features/onboarding/OnboardingDialog";
 import { useTracking } from "../features/tracking/useTracking";
 import { useAsync } from "../hooks/useAsync";
 import { customerApi, productsApi, recsApi } from "../lib/endpoints";
@@ -27,6 +29,7 @@ function strategyNote(data: RecommendationResponse, canTrack: boolean): string |
 export default function HomePage() {
   const { user } = useAuth();
   const { canTrack } = useTracking();
+  const [showOnboarding, setShowOnboarding] = useState(() => !hasOnboarded());
 
   const feed = useAsync((s) => recsApi.home({ limit: 12 }, s), [user?.id, canTrack]);
   const trending = useAsync((s) => recsApi.trending({ limit: 8 }, s), []);
@@ -39,6 +42,14 @@ export default function HomePage() {
 
   return (
     <div className="space-y-10">
+      {showOnboarding && (
+        <OnboardingDialog
+          onDone={(saved) => {
+            setShowOnboarding(false);
+            if (saved) feed.reload();   // the feed reflects the choices right away
+          }}
+        />
+      )}
       {!user && (
         <section aria-labelledby="welcome" className="rounded-2xl border border-slate-800 bg-slate-900 px-6 py-10 text-center">
           <p className="font-display text-sm uppercase tracking-[0.2em] text-violet-300">Adaptive shopping</p>
@@ -60,7 +71,13 @@ export default function HomePage() {
         </section>
       )}
       <section aria-labelledby="for-you">
-        <h1 id="for-you" className="text-2xl font-bold">Recommended for you</h1>
+        <div className="flex flex-wrap items-baseline justify-between gap-3">
+          <h1 id="for-you" className="text-2xl font-bold">Recommended for you</h1>
+          <button type="button" onClick={() => setShowOnboarding(true)}
+                  className="rounded-md border border-slate-700 px-3 py-1 text-xs hover:bg-slate-800">
+            Personalize
+          </button>
+        </div>
         {feed.data && (
           <p className="mt-1 text-sm text-slate-400" data-testid="strategy-note">
             {strategyNote(feed.data, canTrack)}

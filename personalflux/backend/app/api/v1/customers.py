@@ -1,7 +1,6 @@
 """Everything here acts on the logged-in customer only. There is no user id in any path:
 identity comes from the token, so one customer cannot reach another's data."""
 import uuid
-from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.encoders import jsonable_encoder
@@ -14,12 +13,13 @@ from app.api.deps import Actor, get_current_user
 from app.api.v1.auth import COOKIE, _cookie_path
 from app.core.security import verify_password
 from app.db.session import get_db
-from app.models import (Interaction, Preference, Product, RecommendationImpression,
+from app.models import (Interaction, Product, RecommendationImpression,
                         SavedItem, User)
 from app.schemas.auth import UserOut
 from app.schemas.customer import (DeleteAccountIn, InferredProfile, PreferencesOut,
                                   PreferencesPatch, SavedOut, SettingsPatch)
 from app.schemas.product import ViewedProduct
+from app.services import preferences as prefs
 from app.services.events import store_event
 from app.services.profile import build_inferred_profile
 
@@ -29,33 +29,11 @@ _HISTORY_EVENTS = ["view", "click", "compare", "add_to_cart", "save"]
 
 
 def _preferences_out(db: Session, user: User) -> PreferencesOut:
-    rows = db.scalars(select(Preference).where(
-        Preference.user_id == user.id, Preference.source == "explicit")).all()
     return PreferencesOut(
-        explicit={r.preference_type: r.preference_value for r in rows},
+        explicit=prefs.explicit_prefs(db, Actor(user=user, session_id=None)),
         inferred=InferredProfile(**build_inferred_profile(db, user)),
         profile_reset_at=user.profile_reset_at,
     )
-
-
-def _upsert_pref(db: Session, user: User, ptype: str, value) -> None:
-    row = db.scalar(select(Preference).where(
-        Preference.user_id == user.id, Preference.preference_type == ptype))
-    if row is None:
-        db.add(Preference(user_id=user.id, preference_type=ptype,
-                          preference_value=value, source="explicit"))
-    else:
-        row.preference_value = value
-
-
-def _clean_names(values: list[str]) -> list[str]:
-    seen, out = set(), []
-    for v in values:
-        v = v.strip()
-        if v and len(v) <= 100 and v not in seen:
-            seen.add(v)
-            out.append(v)
-    return out
 
 
 @router.get("/preferences", response_model=PreferencesOut)
@@ -66,21 +44,20 @@ def get_preferences(user: User = Depends(get_current_user), db: Session = Depend
 @router.patch("/preferences", response_model=PreferencesOut)
 def update_preferences(payload: PreferencesPatch, user: User = Depends(get_current_user),
                        db: Session = Depends(get_db)):
+    actor = Actor(user=user, session_id=None)
     for ptype in payload.model_fields_set:
         value = getattr(payload, ptype)
-        if ptype in ("liked_categories", "blocked_categories"):
-            names = _clean_names(value or [])
+        if ptype in prefs.NAME_TYPES:
+            names = prefs.clean_names(value)
             if names:
-                _upsert_pref(db, user, ptype, names)
+                prefs.set_pref(db, actor, ptype, names)
             else:
-                db.execute(delete(Preference).where(
-                    Preference.user_id == user.id, Preference.preference_type == ptype))
+                prefs.clear_pref(db, actor, ptype)
         elif ptype == "price_range":
             if value is None or (value.min is None and value.max is None):
-                db.execute(delete(Preference).where(
-                    Preference.user_id == user.id, Preference.preference_type == ptype))
+                prefs.clear_pref(db, actor, ptype)
             else:
-                _upsert_pref(db, user, ptype, {
+                prefs.set_pref(db, actor, ptype, {
                     "min": str(value.min) if value.min is not None else None,
                     "max": str(value.max) if value.max is not None else None})
     db.commit()
@@ -91,9 +68,7 @@ def update_preferences(payload: PreferencesPatch, user: User = Depends(get_curre
 def reset_preferences(include_explicit: bool = False, user: User = Depends(get_current_user),
                       db: Session = Depends(get_db)):
     """Resets what was inferred. Add ?include_explicit=true to also clear stated preferences."""
-    user.profile_reset_at = datetime.now(timezone.utc)
-    if include_explicit:
-        db.execute(delete(Preference).where(Preference.user_id == user.id))
+    prefs.reset(db, Actor(user=user, session_id=None), include_explicit)
     db.commit()
     return _preferences_out(db, user)
 

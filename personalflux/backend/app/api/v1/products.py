@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_optional_user, require_roles
 from app.db.session import get_db
 from app.models import Product, User
-from app.schemas.product import (CategoryCount, ProductCreate, ProductOut, ProductPage,
+from app.schemas.product import (BrandCount, CategoryCount, ProductCreate, ProductOut, ProductPage,
                                  ProductUpdate)
 from app.services import audit
 
@@ -76,6 +76,17 @@ def list_categories(db: Session = Depends(get_db)):
         .group_by(Product.category).order_by(func.count().desc(), Product.category)
     ).all()
     return [CategoryCount(category=c, products=n) for c, n in rows]
+
+
+@router.get("/brands", response_model=list[BrandCount])
+def list_brands(db: Session = Depends(get_db)):
+    """Brands we can actually show, most-stocked first. Empty for catalogs without them."""
+    rows = db.execute(
+        select(Product.brand, func.count().label("n"))
+        .where(Product.is_active.is_(True), Product.brand.is_not(None))
+        .group_by(Product.brand).order_by(func.count().desc(), Product.brand).limit(40)
+    ).all()
+    return [BrandCount(brand=b, products=n) for b, n in rows]
 
 
 @router.get("/{product_id}", response_model=ProductOut)

@@ -3,6 +3,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from app.schemas.customer import PriceRange
 from app.schemas.product import ProductOut
 
 
@@ -41,3 +42,19 @@ class FeedbackIn(BaseModel):
     request_id: str | None = Field(default=None, max_length=64)
     idempotency_key: str | None = Field(default=None, min_length=8, max_length=64,
                                         pattern=r"^[A-Za-z0-9_-]+$")
+
+
+class StatedPreferences(BaseModel):
+    """What the shopper said they want, for an account or an anonymous session."""
+    liked_categories: list[str] = []
+    blocked_categories: list[str] = []
+    liked_brands: list[str] = []
+    price_range: dict | None = None
+
+
+class StatedPreferencesPatch(BaseModel):
+    """Send only what changes. An empty list clears that preference."""
+    liked_categories: list[str] | None = Field(default=None, max_length=20)
+    blocked_categories: list[str] | None = Field(default=None, max_length=20)
+    liked_brands: list[str] | None = Field(default=None, max_length=20)
+    price_range: PriceRange | None = None

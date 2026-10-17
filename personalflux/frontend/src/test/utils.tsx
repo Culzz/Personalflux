@@ -88,6 +88,10 @@ export const baseRoutes = (over: Record<string, Handler> = {}): Record<string, H
   "GET /recommendations/home": feed([]),
   "GET /recommendations/trending": feed([], { request_id: "req-trend", strategy: "popularity" }),
   "GET /products/categories": [],
+  "GET /products/brands": [],
+  "GET /recommendations/preferences": {
+    liked_categories: [], blocked_categories: [], liked_brands: [], price_range: null,
+  },
   "POST /recommendations/impressions": { stored: 1 },
   "POST /events": { stored: true },
   ...over,

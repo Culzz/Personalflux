@@ -18,7 +18,8 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import Actor
 from app.ml.registry import registry
-from app.models import Interaction, Preference, Product
+from app.models import Interaction, Product
+from app.services.preferences import explicit_prefs
 from app.services.profile import EVENT_WEIGHTS
 
 logger = logging.getLogger("personaflux")
@@ -54,23 +55,17 @@ class Signals:
     hist: dict[int, float] = field(default_factory=dict)
     exclude_pids: set = field(default_factory=set)
     liked: set = field(default_factory=set)
+    liked_brands: set = field(default_factory=set)
     blocked: set = field(default_factory=set)
     price_range: dict | None = None
 
 
-def _explicit_prefs(db: Session, user) -> dict:
-    if user is None:
-        return {}
-    rows = db.scalars(select(Preference).where(
-        Preference.user_id == user.id, Preference.source == "explicit")).all()
-    return {r.preference_type: r.preference_value for r in rows}
-
-
 def gather_signals(db: Session, actor: Actor, now: datetime) -> Signals:
     sig = Signals()
-    prefs = _explicit_prefs(db, actor.user)
+    prefs = explicit_prefs(db, actor)
     sig.liked = set(prefs.get("liked_categories") or [])
     sig.blocked = set(prefs.get("blocked_categories") or [])
+    sig.liked_brands = set(prefs.get("liked_brands") or [])
     sig.price_range = prefs.get("price_range")
 
     conds = []
@@ -127,6 +122,15 @@ def _allowed(p: Product, sig: Signals, category: str | None) -> bool:
     return True
 
 
+def _pref_rank(p: Product, sig: Signals) -> int:
+    """0 when the product matches a stated like, 1 otherwise (used by a stable sort)."""
+    if p.category is not None and p.category in sig.liked:
+        return 0
+    if p.brand is not None and p.brand in sig.liked_brands:
+        return 0
+    return 1
+
+
 def _products_by_source(db: Session, source_ids) -> dict[int, Product]:
     ids = list(source_ids)
     if not ids:
@@ -162,8 +166,8 @@ def _db_popular(db: Session, sig: Signals, category: str | None, need: int,
         out.append(Rec(p, 0.0, source, reasons, expl))
         if len(out) == need:
             break
-    if sig.liked and category is None:
-        out.sort(key=lambda r: 0 if r.product.category in sig.liked else 1)
+    if (sig.liked or sig.liked_brands) and category is None:
+        out.sort(key=lambda r: _pref_rank(r.product, sig))
     return out
 
 
@@ -174,14 +178,16 @@ def _popular(db: Session, sig: Signals, category: str | None, need: int,
     if model is not None and need > 0:
         prods = _products_by_source(db, model.ranked)
         ordered = [prods[i] for i in model.ranked if i in prods]
-        if category is None and sig.liked:       # stable sort: liked categories first
-            ordered.sort(key=lambda p: 0 if p.category in sig.liked else 1)
+        if category is None and (sig.liked or sig.liked_brands):   # stable: stated likes first
+            ordered.sort(key=lambda p: _pref_rank(p, sig))
         for p in ordered:
             if p.id in used or not _allowed(p, sig, category):
                 continue
             if category is not None and p.category == category:
                 reasons, expl = ["popular_in_category"], "Popular in the category you are exploring."
-            elif p.category in sig.liked:
+            elif p.brand is not None and p.brand in sig.liked_brands:
+                reasons, expl = ["popular", "matches_stated_preference"], "Popular from a brand you said you like."
+            elif p.category is not None and p.category in sig.liked:
                 reasons, expl = ["popular", "matches_stated_preference"], "Popular in a category you said you like."
             else:
                 reasons, expl = ["popular"], "Popular with other shoppers."
@@ -227,7 +233,7 @@ def recommend_home(db: Session, actor: Actor, limit: int, category: str | None =
                     reasons.append("similar_to_history")
                     if not expl:
                         expl = "Similar to items you have interacted with before."
-                if p.category is not None and p.category in sig.liked:
+                if _pref_rank(p, sig) == 0:
                     reasons.append("matches_stated_preference")
                 results.append(Rec(p, round(combined[sid], 4), "similarity", reasons, expl))
                 if len(results) == limit:
@@ -236,10 +242,10 @@ def recommend_home(db: Session, actor: Actor, limit: int, category: str | None =
                 strategy = ("personalized_hybrid" if (s and l)
                             else "session_based" if s else "history_based")
 
-    if sig.liked and category is None:
+    if (sig.liked or sig.liked_brands) and category is None:
         # A stated like reshapes the feed even when the model would have buried
-        # those categories. Stable sort, so score order still holds within a group.
-        results.sort(key=lambda r: 0 if r.product.category in sig.liked else 1)
+        # those products. Stable sort, so score order still holds within a group.
+        results.sort(key=lambda r: _pref_rank(r.product, sig))
 
     if len(results) < limit:
         used = {r.product.id for r in results}

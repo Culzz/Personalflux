@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
-import { apiError, baseRoutes, feed, mockApi, product, rec, renderApp, signedIn } from "./utils";
+import { apiError, baseRoutes, feed, mockApi, product, rec, renderApp, signedIn, type Call } from "./utils";
 
 const p1 = product("p1", { price: "19.99" });
 const p2 = product("p2");
@@ -66,7 +66,7 @@ describe("product page", () => {
       "GET /customers/me/preferences": {
         explicit: { liked_categories: ["Beauty"] }, inferred: empty, profile_reset_at: null,
       },
-      "PATCH /customers/me/preferences": (c) => ({
+      "PATCH /customers/me/preferences": (c: Call) => ({
         explicit: c.body, inferred: empty, profile_reset_at: null,
       }),
     }));
