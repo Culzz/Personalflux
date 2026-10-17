@@ -25,6 +25,16 @@ describe("product page", () => {
     expect(await screen.findByText("More in Category A")).toBeInTheDocument();
   });
 
+  it("shows the dataset fallback note only when the item has no photo or description", async () => {
+    mockApi(productRoutes({
+      "GET /products/p1": product("p1", { description: "Hand-thrown stoneware mug.", image_url: "https://cdn.example/mug.jpg" }),
+    }));
+    renderApp("/products/p1");
+    await screen.findByRole("heading", { name: "Item p1" });
+    expect(screen.getByText(/In stock and ready to ship/)).toBeInTheDocument();
+    expect(screen.queryByText(/ships without photos or descriptions/)).not.toBeInTheDocument();
+  });
+
   it("records one view with an idempotency key when tracking is on", async () => {
     localStorage.setItem("pf_consent", "granted");
     const m = mockApi(productRoutes());

@@ -1,12 +1,34 @@
 import { ProductCard } from "../components/ProductCard";
 import { CardSkeletons, EmptyState, ErrorState } from "../components/States";
 import { useSaved } from "../features/saved/SavedContext";
+import { useToast } from "../features/toast/ToastContext";
 import { useAsync } from "../hooks/useAsync";
 import { customerApi } from "../lib/endpoints";
 
 export default function SavedPage() {
   const saved = useAsync((s) => customerApi.saved(s), []);
   const ctx = useSaved();
+  const toast = useToast();
+
+  async function remove(productId: string, title: string) {
+    const product = saved.data?.find((x) => x.product.id === productId)?.product;
+    if (!product) return;
+    try {
+      await ctx.toggle(product);
+      saved.setData((prev) => prev.filter((x) => x.product.id !== productId));
+      toast.notify(`Removed ${title}.`, {
+        action: {
+          label: "Undo",
+          onClick: async () => {
+            await ctx.toggle(product);
+            saved.reload();
+          },
+        },
+      });
+    } catch {
+      toast.notify("Could not remove that item.", { tone: "error" });
+    }
+  }
 
   return (
     <div className="space-y-4">
@@ -25,10 +47,7 @@ export default function SavedPage() {
                   actions={
                     <button
                       className="rounded-md bg-slate-800 px-3 py-1.5 text-xs hover:bg-slate-700"
-                      onClick={async () => {
-                        await ctx.toggle(s.product);
-                        saved.setData((prev) => prev.filter((x) => x.product.id !== s.product.id));
-                      }}
+                      onClick={() => void remove(s.product.id, s.product.title)}
                     >
                       Remove<span className="sr-only"> {s.product.title}</span>
                     </button>

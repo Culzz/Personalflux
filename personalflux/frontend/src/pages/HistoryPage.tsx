@@ -1,10 +1,36 @@
 import { ProductCard } from "../components/ProductCard";
 import { CardSkeletons, EmptyState, ErrorState } from "../components/States";
+import { useToast } from "../features/toast/ToastContext";
 import { useAsync } from "../hooks/useAsync";
 import { customerApi } from "../lib/endpoints";
 
 export default function HistoryPage() {
   const history = useAsync((s) => customerApi.history(60, s), []);
+  const toast = useToast();
+
+  async function remove(productId: string, title: string) {
+    const before = history.data;
+    history.setData((prev) => prev.filter((x) => x.product.id !== productId)); // optimistic
+    try {
+      await customerApi.removeFromHistory(productId);
+      toast.notify(`Removed ${title} from your history.`);
+    } catch {
+      if (before) history.setData(() => before); // put it back if the server said no
+      toast.notify("Could not update your history.", { tone: "error" });
+    }
+  }
+
+  async function clearAll() {
+    if (!window.confirm("Delete your whole viewing history? This cannot be undone.")) return;
+    const before = history.data;
+    history.setData(() => []);
+    try {
+      await customerApi.clearHistory();
+    } catch {
+      if (before) history.setData(() => before);
+      toast.notify("Could not clear your history.", { tone: "error" });
+    }
+  }
 
   return (
     <div className="space-y-4">
@@ -13,11 +39,7 @@ export default function HistoryPage() {
         {history.data && history.data.length > 0 && (
           <button
             className="rounded-md bg-slate-800 px-3 py-1.5 text-sm hover:bg-slate-700"
-            onClick={async () => {
-              if (!window.confirm("Delete your whole viewing history? This cannot be undone.")) return;
-              await customerApi.clearHistory();
-              history.setData(() => []);
-            }}
+            onClick={() => void clearAll()}
           >
             Clear all history
           </button>
@@ -41,10 +63,7 @@ export default function HistoryPage() {
                   actions={
                     <button
                       className="rounded-md bg-slate-800 px-3 py-1.5 text-xs hover:bg-slate-700"
-                      onClick={async () => {
-                        await customerApi.removeFromHistory(h.product.id);
-                        history.setData((prev) => prev.filter((x) => x.product.id !== h.product.id));
-                      }}
+                      onClick={() => void remove(h.product.id, h.product.title)}
                     >
                       Remove<span className="sr-only"> {h.product.title}</span>
                     </button>

@@ -5,13 +5,13 @@ import type { Product } from "../lib/types";
 import { ProductImage } from "./ProductImage";
 
 const REASON_LABELS: Record<string, string> = {
-  similar_to_session_items: "Recent views",
-  similar_to_history: "Your history",
-  item_similarity: "Often together",
-  popular: "Popular",
-  popular_in_category: "Popular here",
-  matches_stated_preference: "Your pick",
-  catalog_default: "Catalog",
+  similar_to_session_items: "Similar to what you viewed",
+  similar_to_history: "From your earlier activity",
+  item_similarity: "Often viewed together",
+  popular: "Popular overall",
+  popular_in_category: "Popular in this category",
+  matches_stated_preference: "Matches a category you like",
+  catalog_default: "Catalog pick",
 };
 
 interface Props {
@@ -41,7 +41,7 @@ export function ProductCard({ product, explanation, reasons, onOpen, actions }: 
         <p className="text-sm text-slate-300">{formatPrice(product.price)}</p>
         {(reasons?.length ?? 0) > 0 && (
           <ul aria-label="Why this was recommended" className="mt-1 flex flex-wrap gap-1">
-            {reasons!.slice(0, 2).map((c) => (
+            {reasons!.slice(0, 3).map((c) => (
               <li key={c} className="rounded-full border border-slate-700 px-2 py-0.5 text-[11px] text-slate-500">
                 {REASON_LABELS[c] ?? c.replace(/_/g, " ")}
               </li>

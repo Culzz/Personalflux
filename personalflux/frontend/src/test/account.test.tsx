@@ -92,6 +92,20 @@ describe("saved items and history", () => {
     expect(m.called("DELETE /customers/me/saved/s1")).toHaveLength(1);
   });
 
+  it("offers undo after removing a saved item and restores it", async () => {
+    const m = mockApi(signedIn({
+      "GET /customers/me/saved": [{ product: product("s1"), saved_at: "2026-01-01T00:00:00Z" }],
+      "DELETE /customers/me/saved/s1": null,
+      "PUT /customers/me/saved/s1": null,
+    }));
+    renderApp("/saved");
+    const u = userEvent.setup();
+    await u.click(await screen.findByRole("button", { name: /Remove/ }));
+    await waitFor(() => expect(screen.getByText("Nothing saved yet")).toBeInTheDocument());
+    await u.click(screen.getByRole("button", { name: "Undo" }));
+    await waitFor(() => expect(m.called("PUT /customers/me/saved/s1")).toHaveLength(1));
+  });
+
   it("lists history, removes one item, and clears everything after confirming", async () => {
     vi.spyOn(window, "confirm").mockReturnValue(true);
     const m = mockApi(signedIn({

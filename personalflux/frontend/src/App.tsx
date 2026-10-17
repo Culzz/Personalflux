@@ -6,6 +6,7 @@ import { AuthProvider } from "./features/auth/AuthContext";
 import { CartProvider } from "./features/cart/CartContext";
 import { ConsentProvider } from "./features/consent/ConsentContext";
 import { SavedProvider } from "./features/saved/SavedContext";
+import { ToastProvider } from "./features/toast/ToastContext";
 import { LoginPage, RegisterPage } from "./pages/AuthPages";
 import AboutPage from "./pages/AboutPage";
 import AdminPage from "./pages/AdminPage";
@@ -23,13 +24,15 @@ import SettingsPage from "./pages/SettingsPage";
 
 export function Providers({ children }: { children: ReactNode }) {
   return (
-    <ConsentProvider>
-      <AuthProvider>
-        <SavedProvider>
-          <CartProvider>{children}</CartProvider>
-        </SavedProvider>
-      </AuthProvider>
-    </ConsentProvider>
+    <ToastProvider>
+      <ConsentProvider>
+        <AuthProvider>
+          <SavedProvider>
+            <CartProvider>{children}</CartProvider>
+          </SavedProvider>
+        </AuthProvider>
+      </ConsentProvider>
+    </ToastProvider>
   );
 }
 

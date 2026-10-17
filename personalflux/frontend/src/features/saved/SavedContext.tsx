@@ -1,4 +1,6 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode,
+} from "react";
 import { customerApi, recsApi } from "../../lib/endpoints";
 import type { Product } from "../../lib/types";
 import { useAuth } from "../auth/AuthContext";
@@ -17,6 +19,13 @@ export function SavedProvider({ children }: { children: ReactNode }) {
   const { canTrack } = useTracking();
   const [ids, setIds] = useState<Set<string>>(new Set());
 
+  // A mirror so toggle always reads the latest state, even from a callback
+  // captured before a re-render (for example the toast's undo action).
+  const idsRef = useRef(ids);
+  useEffect(() => {
+    idsRef.current = ids;
+  }, [ids]);
+
   useEffect(() => {
     if (!user) {
       setIds(new Set());
@@ -34,22 +43,30 @@ export function SavedProvider({ children }: { children: ReactNode }) {
 
   const toggle = useCallback(
     async (product: Product, requestId?: string | null) => {
-      const currentlySaved = ids.has(product.id);
-      if (currentlySaved) {
-        await customerApi.unsave(product.id);
-      } else if (requestId && canTrack) {
-        await recsApi.feedback({ product_id: product.id, feedback: "save", request_id: requestId });
-      } else {
-        await customerApi.save(product.id);
+      const currentlySaved = idsRef.current.has(product.id);
+      // Optimistic: flip the button straight away, then roll back if the server rejects it.
+      const flip = (saved: boolean) =>
+        setIds((prev) => {
+          const next = new Set(prev);
+          if (saved) next.add(product.id);
+          else next.delete(product.id);
+          return next;
+        });
+      flip(!currentlySaved);
+      try {
+        if (currentlySaved) {
+          await customerApi.unsave(product.id);
+        } else if (requestId && canTrack) {
+          await recsApi.feedback({ product_id: product.id, feedback: "save", request_id: requestId });
+        } else {
+          await customerApi.save(product.id);
+        }
+      } catch (err) {
+        flip(currentlySaved);   // undo the optimistic change
+        throw err;
       }
-      setIds((prev) => {
-        const next = new Set(prev);
-        if (currentlySaved) next.delete(product.id);
-        else next.add(product.id);
-        return next;
-      });
     },
-    [ids, canTrack],
+    [canTrack],
   );
 
   const value = useMemo(() => ({ isSaved: (id: string) => ids.has(id), toggle }), [ids, toggle]);

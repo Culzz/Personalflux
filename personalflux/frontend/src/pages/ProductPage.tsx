@@ -54,8 +54,14 @@ export default function ProductPage() {
           <p className="text-xl">{formatPrice(p.price)}</p>
           {p.description && <p className="text-slate-300">{p.description}</p>}
           <p className="text-xs text-slate-500">
-            The Retailrocket dataset has no product names, photos or prices, so this item shows only its id and category.
+            {p.is_active ? "In stock and ready to ship." : "Currently unavailable."}
           </p>
+          {!p.description && !p.image_url && (
+            <p className="text-xs text-slate-500">
+              This one comes from the public Retailrocket dataset, which ships without photos or
+              descriptions, so it shows as a placeholder tile.
+            </p>
+          )}
           <div className="flex flex-wrap items-center gap-3">
             <button
               disabled={inCart}
