@@ -20,8 +20,16 @@ def configure_logging() -> None:
     logging.basicConfig(level=settings.log_level.upper(), format="%(message)s")
 
 
+_GROUPS = ("recommendations", "products", "events", "customers",
+           "auth", "analytics", "ml", "admin")
+
+
 def _group(path: str) -> str:
-    return "recommendations" if "/recommendations" in path else "other"
+    """Latency is kept per route family, so one slow area is visible."""
+    for segment in path.split("/"):
+        if segment in _GROUPS:
+            return segment
+    return "other"
 
 
 class RequestContextMiddleware(BaseHTTPMiddleware):

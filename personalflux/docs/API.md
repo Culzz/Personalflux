@@ -28,7 +28,8 @@ All application routes live under `/api/v1`. Health checks are at `/health` (liv
 - Money is returned as a decimal **string** (for example `"12.50"`), never a float.
 - Recommendation `score` is a ranking score, not a purchase probability. Scores from different `source` values are not comparable.
 - `POST /events`: `201` stored, `200` duplicate (same `idempotency_key`), `202` not stored because tracking is off.
-- Rate limits (per IP, in memory): auth endpoints 10/min, recommendation endpoints 120/min.
+- Rate limits (per IP): auth endpoints 10/min, recommendation endpoints 120/min. The limiter keeps
+  counters in process memory, so it is per-worker; use one worker or shared storage before scaling out.
 - Analytics are labelled `live_activity`. Offline evaluation lives under `/ml/experiments` and is labelled `offline_evaluation`.
 
 ## Endpoints

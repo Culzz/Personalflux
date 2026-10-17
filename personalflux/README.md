@@ -50,5 +50,15 @@ discovery; long-term blend helps a little for returning visitors.
 
 ## Docs
 
-`docs/API.md` is the contract. `docs/MODEL_CARD.md` is what was actually
-measured. No revenue claims — offline metrics only.
+| file | what it is |
+|---|---|
+| `docs/SRS.md` | scope, targets, non-goals |
+| `docs/ARCHITECTURE.md` | request path, layers, capacity and scaling triggers |
+| `docs/API.md` | endpoint contract |
+| `docs/DATA_DICTIONARY.md` | tables and columns |
+| `docs/MODEL_CARD.md` | offline evaluation writeup |
+| `docs/PRIVACY_AND_SECURITY.md` | what is collected, sessions, access control |
+| `docs/DEPLOYMENT.md` | compose and production notes |
+
+`docs/MODEL_CARD.md` is what was actually measured. No revenue claims — offline
+metrics only.
