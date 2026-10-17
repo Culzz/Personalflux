@@ -1,10 +1,13 @@
 const nf = new Intl.NumberFormat("en", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-/** The dataset has no currency, so prices are shown as plain numbers. */
-export function formatPrice(price: string | null | undefined): string {
+/** Retailrocket rows carry no currency, so those prices show as plain numbers. */
+export function formatPrice(price: string | null | undefined, currency?: string | null): string {
   if (price === null || price === undefined || price === "") return "Price not listed";
   const n = Number(price);
-  return Number.isFinite(n) ? nf.format(n) : "Price not listed";
+  if (!Number.isFinite(n)) return "Price not listed";
+  const amount = nf.format(n);
+  if (currency === "USD") return `$${amount}`;
+  return currency ? `${amount} ${currency}` : amount;
 }
 
 /** Stable colour per category for placeholder tiles (the dataset has no images). */

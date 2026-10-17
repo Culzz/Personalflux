@@ -13,6 +13,10 @@ class ProductOut(BaseModel):
     category: str | None = None
     price: Decimal | None = None          # JSON string such as "12.50": exact, not a float
     image_url: str | None = None
+    brand: str | None = None
+    stock: int | None = None
+    currency: str | None = None
+    external_url: str | None = None
     is_active: bool
     catalog_source: str
 

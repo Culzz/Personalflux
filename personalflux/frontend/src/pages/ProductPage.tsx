@@ -49,13 +49,24 @@ export default function ProductPage() {
       <div className="grid gap-8 md:grid-cols-2">
         <ProductImage title={p.title} category={p.category} imageUrl={p.image_url} />
         <div className="space-y-4">
+          {p.brand && <p className="text-sm text-slate-400">{p.brand}</p>}
           {p.category && <p className="text-sm text-violet-300">{p.category}</p>}
           <h1 className="text-2xl font-bold">{p.title}</h1>
-          <p className="text-xl">{formatPrice(p.price)}</p>
+          <p className="text-xl">{formatPrice(p.price, p.currency)}</p>
           {p.description && <p className="text-slate-300">{p.description}</p>}
           <p className="text-xs text-slate-500">
-            {p.is_active ? "In stock and ready to ship." : "Currently unavailable."}
+            {p.stock === null
+              ? p.is_active ? "In stock" : "Currently unavailable"
+              : p.stock === 0 ? "Out of stock"
+              : p.stock <= 5 ? `Only ${p.stock} left`
+              : "In stock"}
           </p>
+          {p.external_url && (
+            <a href={p.external_url} target="_blank" rel="noopener noreferrer"
+               className="text-sm text-violet-300 underline">
+              View at source
+            </a>
+          )}
           {!p.description && !p.image_url && (
             <p className="text-xs text-slate-500">
               This one comes from the public Retailrocket dataset, which ships without photos or

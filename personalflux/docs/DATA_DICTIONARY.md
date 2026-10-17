@@ -31,8 +31,17 @@ means deleting an account removes that user's rows.
 | category | varchar(100) | indexed, null |
 | price | numeric(12,2) | null |
 | image_url | varchar(500) | null |
+| brand | varchar(120) | null; only when the source provides one |
+| stock | int | null; null means the source gave no stock figure |
+| currency | varchar(3) | null; ISO code, e.g. `USD`; null for the Retailrocket rows |
+| external_url | varchar(500) | null; link back to the source listing |
 | is_active | bool | default true; inactive products are never recommended |
 | created_at / updated_at | timestamptz | |
+
+`source_item_id` is namespaced per provider (the DummyJSON importer offsets
+ids by 800000) so two sources can never claim the same key. The importer
+upserts on that key, so re-running it refreshes price and stock instead of
+adding duplicate rows.
 
 ## interactions
 

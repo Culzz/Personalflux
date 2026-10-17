@@ -31,8 +31,23 @@ describe("product page", () => {
     }));
     renderApp("/products/p1");
     await screen.findByRole("heading", { name: "Item p1" });
-    expect(screen.getByText(/In stock and ready to ship/)).toBeInTheDocument();
+    expect(screen.getByText(/In stock/)).toBeInTheDocument();
     expect(screen.queryByText(/ships without photos or descriptions/)).not.toBeInTheDocument();
+  });
+
+  it("shows brand, stock and a source link when the catalog provides them", async () => {
+    mockApi(productRoutes({
+      "GET /products/p1": product("p1", {
+        brand: "Acme", stock: 3, currency: "USD", price: "12.50",
+        external_url: "https://dummyjson.com/products/1",
+      }),
+    }));
+    renderApp("/products/p1");
+    await screen.findByRole("heading", { name: "Item p1" });
+    expect(screen.getByText("Acme")).toBeInTheDocument();
+    expect(screen.getByText(/Only 3 left/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /View at source/ }))
+      .toHaveAttribute("href", "https://dummyjson.com/products/1");
   });
 
   it("records one view with an idempotency key when tracking is on", async () => {

@@ -22,6 +22,10 @@ export interface Product {
   category: string | null;
   price: string | null; // exact decimal as a string, e.g. "12.50"
   image_url: string | null;
+  brand: string | null;
+  stock: number | null;
+  currency: string | null;
+  external_url: string | null;
   is_active: boolean;
   catalog_source: string;
 }

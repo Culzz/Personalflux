@@ -33,12 +33,13 @@ export function ProductCard({ product, explanation, reasons, onOpen, actions }: 
         {product.category && (
           <p className="text-[11px] font-semibold uppercase tracking-widest text-violet-300">{product.category}</p>
         )}
+        {product.brand && <p className="text-[11px] text-slate-400">{product.brand}</p>}
         <h3 className="text-base font-medium leading-snug">
           <Link to={to} onClick={onOpen} className="hover:underline">
             {product.title}
           </Link>
         </h3>
-        <p className="text-sm text-slate-300">{formatPrice(product.price)}</p>
+        <p className="text-sm text-slate-300">{formatPrice(product.price, product.currency)}</p>
         {(reasons?.length ?? 0) > 0 && (
           <ul aria-label="Why this was recommended" className="mt-1 flex flex-wrap gap-1">
             {reasons!.slice(0, 3).map((c) => (

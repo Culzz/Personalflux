@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import BigInteger, Boolean, DateTime, Numeric, String, Text, Uuid, func, true
+from sqlalchemy import BigInteger, Boolean, DateTime, Integer, Numeric, String, Text, Uuid, func, true
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.session import Base
@@ -21,6 +21,11 @@ class Product(Base):
     category: Mapped[str | None] = mapped_column(String(100), index=True)
     price: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))  # exact decimals for money
     image_url: Mapped[str | None] = mapped_column(String(500))
+    # Optional fields a live catalog can supply; null for the Retailrocket rows.
+    brand: Mapped[str | None] = mapped_column(String(120))
+    stock: Mapped[int | None] = mapped_column(Integer)
+    currency: Mapped[str | None] = mapped_column(String(3))
+    external_url: Mapped[str | None] = mapped_column(String(500))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default=true())
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(

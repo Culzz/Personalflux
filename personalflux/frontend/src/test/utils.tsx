@@ -61,7 +61,8 @@ export function renderApp(route = "/") {
 
 export const product = (id: string, extra: Partial<Product> = {}): Product => ({
   id, title: `Item ${id}`, description: null, category: "Category A", price: "9.99",
-  image_url: null, is_active: true, catalog_source: "retailrocket", ...extra,
+  image_url: null, brand: null, stock: null, currency: null, external_url: null,
+  is_active: true, catalog_source: "retailrocket", ...extra,
 });
 
 export const rec = (p: Product, rank: number, explanation: string, source: Recommendation["source"] = "similarity"): Recommendation => ({

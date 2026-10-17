@@ -29,6 +29,23 @@ npm ci
 npm run dev
 ```
 
+## Catalog
+
+Two optional sources fill the products table. Both are demo data, and
+`products.catalog_source` records where each row came from, so nothing is
+passed off as a live feed.
+
+```
+cd backend
+python ..\scripts\seed_showcase.py                 # curated set with photos
+python ..\scripts\import_catalog_provider.py 100   # DummyJSON demo store
+```
+
+The provider import pulls the free, keyless DummyJSON store (photos, prices,
+stock). Re-running refreshes price and stock instead of duplicating rows. A
+production feed such as eBay Browse drops in behind the same importer in
+`backend/app/services/provider_catalog.py`.
+
 ## Tests
 
 ```
