@@ -17,7 +17,6 @@ interface CompareValue {
   entries: CompareEntry[];
   ids: string[];
   has: (id: string) => boolean;
-  isFull: boolean;
   /** Adds or removes. Returns false when the list is full and the item is new. */
   toggle: (product: Product) => boolean;
   remove: (id: string) => void;
@@ -64,8 +63,7 @@ export function CompareProvider({ children }: { children: ReactNode }) {
   const clear = useCallback(() => setEntries([]), []);
 
   const value = useMemo<CompareValue>(() => ({
-    entries, ids: entries.map((e) => e.id), has, isFull: entries.length >= COMPARE_MAX,
-    toggle, remove, clear,
+    entries, ids: entries.map((e) => e.id), has, toggle, remove, clear,
   }), [entries, has, toggle, remove, clear]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

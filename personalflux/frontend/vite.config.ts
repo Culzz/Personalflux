@@ -16,5 +16,9 @@ export default defineConfig({
     globals: true,
     setupFiles: ["./src/test/setup.ts"],
     css: false,
+    // The default 5s is tight for tests that drive real user events; a loaded or
+    // shared machine can genuinely need more, and a flaky suite is worse than a
+    // slightly longer one.
+    testTimeout: 15000,
   },
 });

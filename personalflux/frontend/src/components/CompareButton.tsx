@@ -13,7 +13,9 @@ export function CompareButton({ product }: { product: Product }) {
       type="button"
       aria-pressed={active}
       onClick={() => {
-        if (!active && !toggle(product)) {
+        // toggle removes an item that is already queued, so a full list is the
+        // only case it refuses.
+        if (!toggle(product)) {
           notify("You can compare up to four products at a time.");
         }
       }}
