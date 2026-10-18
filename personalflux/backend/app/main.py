@@ -11,14 +11,19 @@ from app.core.config import settings
 from app.core.errors import install_error_handlers
 from app.core.observability import RequestContextMiddleware, configure_logging
 from app.db.session import get_db
-from app.services.model_admin import startup_load_model
+from app.ml.artifact_fetch import ensure_artifacts
+from app.services.model_admin import (start_version_poller, startup_load_model,
+                                      stop_version_poller)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     configure_logging()
+    ensure_artifacts()          # no-op unless MODEL_ARTIFACT_URL is set
     startup_load_model()        # a missing or invalid model means fallback mode, not a crash
+    start_version_poller()      # adopt promotions made by other workers
     yield
+    stop_version_poller()
 
 
 app = FastAPI(
@@ -30,7 +35,7 @@ app = FastAPI(
 # Added last = outermost: request IDs and logging wrap everything else.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[o.strip() for o in settings.cors_origins.split(",") if o.strip()],
+    allow_origins=settings.cors_origin_list,
     allow_credentials=True,                  # needed for the HttpOnly refresh cookie
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
     allow_headers=["Authorization", "Content-Type", "X-Session-Id", "X-Request-ID"],
@@ -56,3 +61,27 @@ def health_db(db: Session = Depends(get_db)):
     except Exception:
         return JSONResponse(status_code=503,
                             content={"status": "degraded", "database": "unreachable"})
+
+
+@app.get("/health/model")
+def health_model():
+    """Whether this worker is serving the version the database asks for.
+
+    Degraded (503) means either no model at all, or this worker has not yet
+    caught up with a promotion. It never blocks /health/liveness.
+    """
+    from app.ml.registry import registry
+
+    behind = registry.is_behind()
+    healthy = registry.model is not None and not behind
+    return JSONResponse(
+        status_code=200 if healthy else 503,
+        content={
+            "status": "ok" if healthy else "degraded",
+            "serving_version": registry.serving_version,
+            "desired_version": registry.desired_version,
+            "worker_behind": behind,
+            "last_check_at": registry.last_check_at.isoformat() if registry.last_check_at else None,
+            "error": registry.error or registry.poll_error,
+        },
+    )

@@ -1,7 +1,8 @@
-# PersonaFlux API (v0.4)
+# PersonaFlux API (v0.6)
 
 Base URL in development: `http://localhost:8000`. Interactive docs: `/docs` (disabled when `APP_ENV=production`).
-All application routes live under `/api/v1`. Health checks are at `/health` (liveness) and `/health/db` (database readiness).
+All application routes live under `/api/v1`. Health checks are `/health` (liveness), `/health/db` (database
+readiness) and `/health/model` (this worker is serving the version the database asks for).
 
 ## Authentication
 
@@ -10,12 +11,13 @@ All application routes live under `/api/v1`. Health checks are at `/health` (liv
 - The same response sets an **HttpOnly refresh cookie** (`refresh_token`, `SameSite=Strict`, path `/api/v1/auth`,
   `Secure` when `APP_ENV=production`). Browsers must call the API with `credentials: "include"`. Strict means the
   cookie is never sent on navigation from another site; silent refresh only happens on same-site API calls.
-- `POST /auth/refresh` rotates the refresh token (each works once) and sets the replacement cookie. Reusing an old
-  one ends every session of that user, on suspicion of theft. Two tabs racing a refresh do not log each other out:
-  the winner shares the new tokens through a same-origin storage event and the loser retries once with the fresh
-  cookie before treating a second 401 as a dead session.
-- `POST /auth/logout` revokes the refresh token in the database and clears the cookie with matching flags, and the
-  client drops its in-memory token plus saved-ids cache.
+- `POST /auth/refresh` rotates the refresh token (each works once) and sets the replacement cookie. Each login is a
+  **family** of tokens; a retired token presented again outside a short grace window (`REFRESH_REUSE_GRACE_SECONDS`,
+  default 10s) is treated as theft and the whole family is revoked, with an `auth.refresh_reuse` audit entry. Inside
+  the window — two tabs refreshing at the same moment — the token is only rejected, so a race cannot log a real user
+  out. A token whose family is revoked cannot refresh even if it had not expired.
+- `POST /auth/logout` revokes the whole family and clears the cookie with matching flags, and the client drops its
+  in-memory token plus saved-ids cache.
 - Identity always comes from the token. No endpoint accepts a user id from the client.
 - Anonymous visitors send `X-Session-Id` (8-64 characters: letters, digits, `-`, `_`) instead of a token.
 - Roles: `customer`, `analyst`, `admin`, `ml_engineer`. Registration creates `customer` accounts only.
@@ -28,9 +30,15 @@ All application routes live under `/api/v1`. Health checks are at `/health` (liv
 - Money is returned as a decimal **string** (for example `"12.50"`), never a float.
 - Recommendation `score` is a ranking score, not a purchase probability. Scores from different `source` values are not comparable.
 - `POST /events`: `201` stored, `200` duplicate (same `idempotency_key`), `202` not stored because tracking is off.
+  A `context` that carries `request_id` (and optionally `position`, `model_version`) is turned into attribution
+  columns, so a click points at the impression — and the model version — that produced it.
 - Rate limits (per IP): auth endpoints 10/min, recommendation endpoints 120/min. The limiter keeps
   counters in process memory, so it is per-worker; use one worker or shared storage before scaling out.
 - Analytics are labelled `live_activity`. Offline evaluation lives under `/ml/experiments` and is labelled `offline_evaluation`.
+  `/analytics/recommendations` returns its `definitions` alongside the numbers.
+- **Impression**: a product a person could actually see (at least half the card on screen for a short dwell), not
+  everything the API returned. `POST /recommendations/impressions` is keyed `request_id:product_id`, so a repeated
+  report is ignored; a click that names the same key is an **attributed click**.
 
 ## Endpoints
 
@@ -71,6 +79,7 @@ All application routes live under `/api/v1`. Health checks are at `/health` (liv
 | POST | `/api/v1/products` | admin | Create Product |
 | GET | `/api/v1/products/brands` | public | List Brands |
 | GET | `/api/v1/products/categories` | public | List Categories |
+| GET | `/api/v1/products/compare` | public | Compare Products |
 | GET | `/api/v1/products/{product_id}` | public | Get Product |
 | PATCH | `/api/v1/products/{product_id}` | admin | Update Product |
 | GET | `/api/v1/products/{product_id}/related` | public | Related Products |

@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, DateTime, String, Uuid, func
+from sqlalchemy import CheckConstraint, DateTime, Index, String, Uuid, func, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -17,6 +17,11 @@ class ModelVersion(Base):
             "status IN ('candidate', 'serving', 'retired', 'failed_validation')",
             name="ck_model_versions_status",
         ),
+        # At most one version serves at a time. The partial unique index enforces
+        # that in the database, so a race between two promotions cannot leave the
+        # system with two active models.
+        Index("uq_model_versions_one_serving", "status", unique=True,
+              postgresql_where=text("status = 'serving'")),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)

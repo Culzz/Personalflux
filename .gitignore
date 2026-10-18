@@ -1,0 +1,13 @@
+# Local dataset extracts and scratch archives.
+# The Retailrocket files are inputs to the offline training pipeline, not source.
+/events.csv
+/category_tree.csv
+/item_properties_part1.csv
+/item_properties_part2.csv
+/item_properties_part3.csv
+/archive (5).zip
+/trustscore/
+
+# Build outputs that live beside the project rather than inside it.
+/personaflux/personaflux-backend.zip
+/personaflux/personaflux-frontend.zip

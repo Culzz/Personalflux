@@ -1,0 +1,53 @@
+# Render Blueprint for the PersonaFlux API.
+#
+# The frontend is deployed separately on Vercel; this file provisions the API
+# container, its managed PostgreSQL database, and a small disk for the model
+# artefacts. The repository root contains the project under personalflux/, so
+# every path below is written relative to the repository root.
+#
+#   Dashboard -> New -> Blueprint -> pick this repository.
+#
+# After the first deploy, set CORS_ORIGINS to the Vercel URL (for example
+# https://personaflux.vercel.app) and, optionally, MODEL_ARTIFACT_URL to a
+# tarball of the artefact directory so the API can serve the model immediately.
+databases:
+  - name: personaflux-db
+    databaseName: personaflux
+    user: personaflux
+    plan: basic-256mb
+    postgresMajorVersion: "16"
+
+services:
+  - type: web
+    name: personaflux-api
+    runtime: docker
+    plan: starter
+    region: frankfurt
+    rootDir: personalflux/backend
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health/db
+    autoDeploy: true
+    disk:
+      name: artifacts
+      mountPath: /artifacts
+      sizeGB: 1
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: personaflux-db
+          property: connectionString
+      - key: JWT_SECRET_KEY
+        generateValue: true
+      - key: MODEL_ARTIFACT_DIR
+        value: /artifacts
+      - key: WEB_CONCURRENCY
+        value: "2"
+      - key: LOG_LEVEL
+        value: INFO
+      # Set both of these in the dashboard before going live.
+      - key: CORS_ORIGINS
+        sync: false
+      - key: MODEL_ARTIFACT_URL
+        sync: false

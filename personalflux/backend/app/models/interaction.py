@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, String, Uuid, func
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, Integer, String, Uuid, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -28,6 +28,7 @@ class Interaction(Base):
         Index("ix_interactions_session_time", "session_id", "occurred_at"),
         Index("ix_interactions_product", "product_id"),
         Index("ix_interactions_event_type", "event_type"),
+        Index("ix_interactions_impression", "impression_id"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
@@ -37,6 +38,13 @@ class Interaction(Base):
     product_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("products.id", ondelete="RESTRICT"))
     event_type: Mapped[str] = mapped_column(String(20))
     context: Mapped[dict | None] = mapped_column(JSONB)
+    # Attribution. A recommendation request carries a request id; the impression it
+    # showed is `request_id:product_id`; a click names the same impression, so the
+    # click can be traced back to the request and the model version that produced it.
+    request_id: Mapped[str | None] = mapped_column(String(64))
+    impression_id: Mapped[str | None] = mapped_column(String(120))
+    position: Mapped[int | None] = mapped_column(Integer)
+    model_version: Mapped[str | None] = mapped_column(String(100))
     # A client-supplied key so a retried request is not stored twice (SRS FR-03)
     idempotency_key: Mapped[str | None] = mapped_column(String(64), unique=True)
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

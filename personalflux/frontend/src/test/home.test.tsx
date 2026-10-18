@@ -132,7 +132,7 @@ describe("home feed", () => {
     await screen.findByRole("heading", { name: "Item p1" });
     await waitFor(() => expect(m.called("POST /events").length).toBeGreaterThanOrEqual(2));
     const events = m.called("POST /events").map((c) => c.body);
-    expect(events).toContainEqual({ event_type: "click", product_id: "p1", context: { source: "recommendation", request_id: "req-feed" } });
+    expect(events).toContainEqual({ event_type: "click", product_id: "p1", context: { source: "recommendation", request_id: "req-feed", model_version: "v1", position: 1 } });
     const view = events.find((e) => e.event_type === "view");
     expect(view).toMatchObject({ product_id: "p1" });
     expect(view.idempotency_key).toMatch(/^view-/);

@@ -103,7 +103,13 @@ def update_stated_preferences(payload: StatedPreferencesPatch,
 @router.post("/impressions")
 def record_impressions(payload: ImpressionsIn, response: Response,
                        actor: Actor = Depends(require_actor), db: Session = Depends(get_db)):
-    """Called by the frontend with what was actually shown, and at which position."""
+    """Called by the frontend with items that were actually displayed, and where.
+
+    Each item becomes an impression keyed by `request_id:product_id`. A repeated
+    report (a retry, a remount) is ignored rather than counted twice, and a later
+    click on the same product carries the same key, so clicks can be matched to
+    the impressions they came from.
+    """
     if actor.user is not None and not actor.user.tracking_consent:
         response.status_code = 202
         return {"stored": 0, "reason": "tracking_disabled"}
@@ -111,14 +117,23 @@ def record_impressions(payload: ImpressionsIn, response: Response,
     found = set(db.scalars(select(Product.id).where(Product.id.in_(ids))))
     if found != ids:
         raise HTTPException(status_code=422, detail="Unknown product_id in items.")
-    for item in payload.items:
-        db.add(RecommendationImpression(
-            user_id=actor.user.id if actor.user else None, session_id=actor.session_id,
-            product_id=item.product_id, request_id=payload.request_id,
-            model_version=payload.model_version, position=item.position))
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+    rows = [{
+        "user_id": actor.user.id if actor.user else None,
+        "session_id": actor.session_id,
+        "product_id": item.product_id,
+        "request_id": payload.request_id,
+        "impression_id": f"{payload.request_id}:{item.product_id}"[:120],
+        "model_version": payload.model_version,
+        "position": item.position,
+    } for item in payload.items]
+    result = db.execute(pg_insert(RecommendationImpression).values(rows)
+                        .on_conflict_do_nothing(index_elements=["impression_id"])
+                        .returning(RecommendationImpression.impression_id))
     db.commit()
+    stored = len(result.scalars().all())      # only rows that were actually inserted
     response.status_code = 201
-    return {"stored": len(payload.items)}
+    return {"stored": stored}
 
 
 @router.post("/feedback")

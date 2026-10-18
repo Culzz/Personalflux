@@ -31,20 +31,24 @@ npm run dev
 
 ## Catalog
 
-Two optional sources fill the products table. Both are demo data, and
-`products.catalog_source` records where each row came from, so nothing is
-passed off as a live feed.
+Three optional sources fill the products table, and `products.catalog_source`
+records where each row came from, so a demo row is never presented as a real
+listing.
 
 ```
 cd backend
-python ..\scripts\seed_showcase.py                 # curated set with photos
-python ..\scripts\import_catalog_provider.py 100   # DummyJSON demo store
+python ..\scripts\seed_showcase.py                 # curated set with photos (demo)
+python ..\scripts\import_catalog_provider.py 100   # DummyJSON demo store (demo)
+python ..\scripts\import_affiliate_catalog.py "wireless headphones" "running shoes"
 ```
 
-The provider import pulls the free, keyless DummyJSON store (photos, prices,
-stock). Re-running refreshes price and stock instead of duplicating rows. A
-production feed such as eBay Browse drops in behind the same importer in
-`backend/app/services/provider_catalog.py`.
+The first two are clearly labelled demo data: realistic photos, prices and stock,
+but not real brands. The third imports a **live affiliate feed** from the eBay
+Browse API and needs `EBAY_CLIENT_ID` and `EBAY_CLIENT_SECRET` (optionally
+`AFFILIATE_CAMPAIGN_ID` for your Partner Network campaign). Item ids are hashed
+into their own namespace and rows are upserted by `source_item_id`, so re-running
+refreshes price, image and availability instead of duplicating rows. With no
+credentials the importer refuses and says what to set rather than inventing data.
 
 ## Tests
 

@@ -1,8 +1,11 @@
 import numpy as np
-from sqlalchemy import select
+import pytest
+from sqlalchemy import select, update
+from sqlalchemy.exc import IntegrityError
 
 from app.ml.registry import registry
 from app.models import AuditLog, EvaluationRun, Experiment, ModelVersion
+from app.services.model_admin import poll_once
 from app.tests.conftest import user_headers
 from app.tests.helpers import EDGES, ITEMS, write_artifact
 
@@ -97,6 +100,73 @@ def test_only_operators_can_promote(client, db, tmp_path):
     h = user_headers(client, db, "an@shop.dev", role="analyst")
     assert client.post(f"{ML}/models/v1/promote", headers=h).status_code == 403
     assert client.get(f"{ML}/models", headers=h).status_code == 200      # read-only is fine
+
+
+def _move_pointer(db, from_version, to_version):
+    """Stand in for a promotion another worker performed."""
+    db.execute(update(ModelVersion).where(ModelVersion.version == from_version)
+               .values(status="retired"))
+    db.execute(update(ModelVersion).where(ModelVersion.version == to_version)
+               .values(status="serving"))
+    db.commit()
+    db.expire_all()
+
+
+def test_a_worker_adopts_another_workers_promotion_on_its_next_poll(client, db, tmp_path):
+    registry.root_override = tmp_path
+    write_artifact(tmp_path, "v1", ITEMS, EDGES)
+    write_artifact(tmp_path, "v2", ITEMS, EDGES)
+    h = user_headers(client, db, "ml@shop.dev", role="ml_engineer")
+    client.post(f"{ML}/models/scan", headers=h)
+    client.post(f"{ML}/models/v1/promote", headers=h)
+
+    # A second worker is still on v1 while another process promotes v2.
+    _move_pointer(db, "v1", "v2")
+    assert registry.serving_version == "v1"
+    assert registry.is_behind() is False          # it does not know about v2 yet
+
+    assert poll_once() == "v2"                    # next poll notices and hot-swaps
+    assert registry.serving_version == "v2"
+    assert registry.model.version == "v2"
+    assert registry.is_behind() is False
+
+
+def test_a_poll_never_swaps_to_a_model_that_fails_validation(client, db, tmp_path):
+    registry.root_override = tmp_path
+    write_artifact(tmp_path, "v1", ITEMS, EDGES)
+    bad = write_artifact(tmp_path, "v2", ITEMS, EDGES)
+    h = user_headers(client, db, "ml@shop.dev", role="ml_engineer")
+    client.post(f"{ML}/models/scan", headers=h)
+    client.post(f"{ML}/models/v1/promote", headers=h)
+    np.save(bad / "items.npy", np.array([1, 2, 3], dtype=np.int64))   # corrupt on disk
+
+    _move_pointer(db, "v1", "v2")
+    assert poll_once() == "v1"                    # keeps serving the working model
+    assert registry.serving_version == "v1"
+    assert registry.poll_error and "v2" in registry.poll_error
+
+
+def test_health_model_flags_a_worker_that_has_not_caught_up(client, db, tmp_path):
+    registry.root_override = tmp_path
+    write_artifact(tmp_path, "v1", ITEMS, EDGES)
+    h = user_headers(client, db, "ml@shop.dev", role="ml_engineer")
+    client.post(f"{ML}/models/scan", headers=h)
+    client.post(f"{ML}/models/v1/promote", headers=h)
+    ok = client.get("/health/model").json()
+    assert ok["status"] == "ok" and ok["serving_version"] == "v1" and ok["worker_behind"] is False
+
+    registry.desired_version = "v2"               # database moved on; this worker has not
+    behind = client.get("/health/model")
+    assert behind.status_code == 503
+    assert behind.json()["worker_behind"] is True
+
+
+def test_the_database_refuses_two_serving_models_at_once(db):
+    db.add(ModelVersion(version="a", artifact_uri="artifacts/a", status="serving"))
+    db.add(ModelVersion(version="b", artifact_uri="artifacts/b", status="serving"))
+    with pytest.raises(IntegrityError):
+        db.commit()
+    db.rollback()
 
 
 def test_experiments_are_listed_separately_as_offline_results(client, db):

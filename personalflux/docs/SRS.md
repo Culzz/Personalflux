@@ -8,14 +8,16 @@ rest of the docs have something to point at.
 ## Functional (v1)
 
 1. **Shop the catalog.** Browse, search by title, open a product, see related
-   items.
+   items, and line up to four products side by side.
 2. **Recommend.** A personalised home feed plus similar and trending lists.
    Every item carries an explanation for a signal that actually fired. Anonymous
    visitors get popularity until they consent.
 3. **Learn from behaviour.** Record view, click, search, cart, purchase, save and
    dismiss events, with consent, exactly once per event.
 4. **Let customers stay in control.** Saved items, stated preferences, history,
-   data export and account deletion.
+   data export and account deletion. Stated preferences can be set before anyone
+   registers (they attach to the anonymous session) and are stored apart from
+   inferred interests.
 5. **Operate the model.** Register artifacts, keep offline evaluation separate
    from live activity, promote or roll back a version. Analysts and admins see
    live activity; ML staff see offline evaluation.

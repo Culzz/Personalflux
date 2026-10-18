@@ -54,18 +54,22 @@ Append-only behavioural events.
 | session_id | varchar(64) | null; anonymous visitor |
 | product_id | uuid | FK products, restrict, null (a `search` has no product) |
 | event_type | varchar(20) | `view` \| `click` \| `search` \| `compare` \| `add_to_cart` \| `purchase` \| `save` \| `dismiss` |
-| context | jsonb | null; e.g. search category |
+| context | jsonb | null; e.g. search category, and the recommendation trail |
+| request_id | varchar(64) | null; the recommendation request this event belongs to |
+| impression_id | varchar(120) | null; `request_id:product_id`, the impression a click came from |
+| position | int | null; rank of the item when it was shown |
+| model_version | varchar(100) | null; which model produced the slot that was clicked |
 | idempotency_key | varchar(64) | unique, null; a retried request is not stored twice |
 | occurred_at | timestamptz | client time |
 | created_at | timestamptz | server time |
 
 Constraints: a row must name a `user_id` or a `session_id`; a non-`search`
 event must name a `product_id`. Indexed by (user, time), (session, time),
-product, and event_type.
+product, event_type, and impression_id.
 
 ## recommendation_impressions
 
-What was actually shown, and where in the list. Feeds live-activity analytics.
+What was actually displayed, and where in the list. Feeds live-activity analytics.
 
 | column | type | notes |
 |---|---|---|
@@ -74,9 +78,13 @@ What was actually shown, and where in the list. Feeds live-activity analytics.
 | session_id | varchar(64) | null |
 | product_id | uuid | FK products, restrict |
 | request_id | varchar(64) | ties an impression to one recommendation response |
+| impression_id | varchar(120) | unique; `request_id:product_id`, the join key a click uses |
 | model_version | varchar(100) | null; which model produced the slot |
 | position | int | rank in the list, 1-based |
 | created_at | timestamptz | |
+
+`impression_id` is unique, so a replayed report (a retry, a component remount)
+cannot inflate the counts. Indexed by (product_id, created_at) for coverage.
 
 ## saved_items
 
@@ -107,14 +115,25 @@ Exactly one owner is set. Unique on (user_id, preference_type) and on
 
 ## refresh_tokens
 
+A login opens a *family*; rotation issues a new token in the same family and
+retires the old one. Presenting a retired token means it leaked, so the family is
+revoked.
+
 | column | type | notes |
 |---|---|---|
 | id | uuid | PK |
 | user_id | uuid | FK users, cascade, indexed |
+| family_id | uuid | indexed; one per login, shared by its rotated tokens |
 | token_hash | varchar(64) | unique; only the hash is stored, the raw token is the cookie |
 | expires_at | timestamptz | |
-| revoked_at | timestamptz | null; set on logout or on reuse of a rotated token |
+| revoked_at | timestamptz | null; set on rotation, logout, or detected reuse |
+| rotated_at | timestamptz | null; when this token was rotated for a fresh one |
+| revoked_reason | varchar(20) | null; `rotated` \| `logout` \| `reuse_detected` |
 | created_at | timestamptz | |
+
+A retired token presented again within `REFRESH_REUSE_GRACE_SECONDS` is treated
+as two tabs racing and is only rejected; outside that window it is treated as
+theft and the whole family is revoked, with an `auth.refresh_reuse` audit entry.
 
 ## model_versions
 

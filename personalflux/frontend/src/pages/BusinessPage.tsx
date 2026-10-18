@@ -97,14 +97,56 @@ export default function BusinessPage() {
       </section>
       <section>
         <h2 className="text-lg font-semibold"><FlaskConical size={16} className="mr-1 inline" />Recommendations</h2>
-        <div className="mt-3 rounded-xl border border-slate-800 bg-slate-900 p-4 text-sm text-slate-400">
+        <div className="mt-3 rounded-xl border border-slate-800 bg-slate-900 p-4 text-sm">
           {rec.data ? (
-            <>{rec.data.impressions} impressions · CTR {rec.data.click_through_rate ?? "—"}</>
+            <>
+              <dl className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-4">
+                <Metric label="Impressions" value={rec.data.impressions} />
+                <Metric label="Clicks" value={rec.data.clicks_from_recommendations} />
+                <Metric label="Attributed clicks" value={rec.data.attributed_clicks} />
+                <Metric label="Click-through rate" value={fmt(rec.data.click_through_rate)} />
+                <Metric label="Requests shown" value={rec.data.recommendation_requests_with_impressions} />
+                <Metric label="Impressions / request" value={fmt(rec.data.impressions_per_request)} />
+                <Metric label="Catalogue coverage" value={fmt(rec.data.catalogue_coverage_ratio)} />
+                <Metric label="Fallback rate" value={fmt(rec.data.fallback_rate)} />
+              </dl>
+              {Object.keys(rec.data.impressions_by_model_version ?? {}).length > 0 && (
+                <p className="mt-3 text-xs text-slate-500">
+                  By model version:{" "}
+                  {Object.entries(rec.data.impressions_by_model_version)
+                    .map(([v, n]) => `${v === "None" ? "fallback" : v} ${n}`)
+                    .join(" · ")}
+                </p>
+              )}
+              <details className="mt-3 text-xs text-slate-500">
+                <summary className="cursor-pointer">How these are defined</summary>
+                <ul className="mt-2 space-y-1">
+                  {Object.entries(rec.data.definitions ?? {}).map(([k, v]) => (
+                    <li key={k}>
+                      <span className="font-medium">{k.replace(/_/g, " ")}</span> — {v}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            </>
           ) : (
-            "No data yet."
+            <span className="text-slate-400">No data yet.</span>
           )}
         </div>
       </section>
+    </div>
+  );
+}
+
+function fmt(value: number | null | undefined): string {
+  return value === null || value === undefined ? "—" : String(value);
+}
+
+function Metric({ label, value }: { label: string; value: number | string }) {
+  return (
+    <div>
+      <dt className="text-xs uppercase tracking-wide text-slate-500">{label}</dt>
+      <dd className="mt-0.5 text-lg font-semibold">{value}</dd>
     </div>
   );
 }

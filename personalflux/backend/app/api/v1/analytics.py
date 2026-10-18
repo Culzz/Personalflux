@@ -78,20 +78,71 @@ def segments(days: int = Query(30, ge=1, le=365), db: Session = Depends(get_db))
 
 @router.get("/recommendations")
 def recommendation_performance(days: int = Query(30, ge=1, le=365), db: Session = Depends(get_db)):
+    """Recommendation performance for merchants.
+
+    Every number is computed from stored impressions and events, and every label
+    below states how it is defined. No model-quality claim is made here: this is
+    live activity, not the offline evaluation, which lives under /ml/experiments.
+    """
     since = _since(days)
+
     impressions = db.scalar(select(func.count()).select_from(RecommendationImpression)
                             .where(RecommendationImpression.created_at >= since)) or 0
     requests = db.scalar(select(func.count(func.distinct(RecommendationImpression.request_id)))
                          .where(RecommendationImpression.created_at >= since)) or 0
+    distinct_shown = db.scalar(select(func.count(func.distinct(RecommendationImpression.product_id)))
+                               .where(RecommendationImpression.created_at >= since)) or 0
+    active_products = db.scalar(select(func.count()).select_from(Product)
+                                .where(Product.is_active.is_(True))) or 0
+
+    by_version = dict(db.execute(
+        select(RecommendationImpression.model_version, func.count())
+        .where(RecommendationImpression.created_at >= since)
+        .group_by(RecommendationImpression.model_version)).all())
+
     engaged = dict(db.execute(
         select(Interaction.event_type, func.count())
         .where(Interaction.occurred_at >= since,
                Interaction.context["source"].as_string() == "recommendation")
         .group_by(Interaction.event_type)).all())
+
+    # A click is *attributed* when it names an impression that was really stored.
+    attributed = db.scalar(
+        select(func.count()).select_from(Interaction)
+        .where(Interaction.occurred_at >= since, Interaction.event_type == "click",
+               Interaction.impression_id.is_not(None),
+               Interaction.impression_id.in_(
+                   select(RecommendationImpression.impression_id)
+                   .where(RecommendationImpression.created_at >= since)))) or 0
     clicks = engaged.get("click", 0)
+    fallback_impressions = by_version.get(None, 0)
+
     return {
         "kind": "live_activity", "note": LIVE_NOTE, "window_days": days,
-        "impressions": impressions, "recommendation_requests_with_impressions": requests,
+        "impressions": impressions,
+        "recommendation_requests_with_impressions": requests,
+        "distinct_products_shown": distinct_shown,
+        "impressions_per_request": round(impressions / requests, 2) if requests else None,
+        "catalogue_coverage_ratio": round(distinct_shown / active_products, 4) if active_products else None,
+        "impressions_by_model_version": {str(k): v for k, v in by_version.items()},
+        "fallback_impressions": fallback_impressions,
+        "fallback_rate": round(fallback_impressions / impressions, 4) if impressions else None,
         "engagement_from_recommendations": engaged,
+        "clicks_from_recommendations": clicks,
+        "attributed_clicks": attributed,
         "click_through_rate": round(clicks / impressions, 4) if impressions else None,
+        "definitions": {
+            "impression": "a product that was displayed to a person (at least half the card, "
+                          "on screen for a short dwell), not merely returned by the API",
+            "recommendation_requests_with_impressions": "distinct recommendation requests that "
+                                                        "produced at least one impression",
+            "catalogue_coverage_ratio": "distinct products shown / active products",
+            "click_through_rate": "clicks from recommendations / impressions",
+            "attributed_clicks": "clicks whose impression id matches a stored impression, so the "
+                                 "request and model version behind the click are known",
+            "fallback_rate": "impressions with no model version / all impressions; these were "
+                             "served by database popularity while the model was unavailable",
+            "sample_size_caveat": "small windows can move sharply; read the absolute counts, "
+                                  "not only the ratios",
+        },
     }

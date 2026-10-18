@@ -27,19 +27,25 @@ export function useTracking() {
     [canTrack],
   );
 
-  /** Reports what was actually shown. Each recommendation request is reported once. */
+  /** Reports items that were actually displayed. Safe to call repeatedly: a
+   *  `request_id:product_id` pair is only ever sent once. */
   const recordImpressions = useCallback(
-    (requestId: string | null, modelVersion: string | null, productIds: string[]) => {
-      if (!canTrack || !requestId || productIds.length === 0) return;
-      if (sentImpressions.current.has(requestId)) return;
-      sentImpressions.current.add(requestId);
+    (
+      requestId: string | null,
+      modelVersion: string | null,
+      items: { product_id: string; position: number }[],
+    ) => {
+      if (!canTrack || !requestId || items.length === 0) return;
+      const fresh = items.filter((it) => !sentImpressions.current.has(`${requestId}:${it.product_id}`));
+      if (fresh.length === 0) return;
+      fresh.forEach((it) => sentImpressions.current.add(`${requestId}:${it.product_id}`));
       void recsApi
-        .impressions({
-          request_id: requestId,
-          model_version: modelVersion,
-          items: productIds.map((product_id, i) => ({ product_id, position: i + 1 })),
-        })
-        .catch(() => undefined);
+        .impressions({ request_id: requestId, model_version: modelVersion, items: fresh })
+        .catch(() =>
+          // Let a failed report be retried on the next visibility change rather
+          // than silently losing the impression.
+          fresh.forEach((it) => sentImpressions.current.delete(`${requestId}:${it.product_id}`)),
+        );
     },
     [canTrack],
   );

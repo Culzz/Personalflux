@@ -1,3 +1,4 @@
+import uuid
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -13,6 +14,7 @@ from app.core.security import (create_access_token, hash_password, hash_token,
 from app.db.session import get_db
 from app.models import RefreshToken, User
 from app.schemas.auth import LoginIn, RegisterIn, TokenOut, UserOut
+from app.services import audit
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -23,11 +25,12 @@ def _cookie_path() -> str:
     return f"{settings.api_v1_prefix}/auth"
 
 
-def _issue_session(db: Session, user: User, response: Response) -> TokenOut:
+def _issue_session(db: Session, user: User, response: Response,
+                   family_id: uuid.UUID | None = None) -> TokenOut:
     """New access token (in the response body) + rotating refresh token (HttpOnly cookie)."""
     raw, token_hash = new_refresh_token()
     db.add(RefreshToken(
-        user_id=user.id, token_hash=token_hash,
+        user_id=user.id, family_id=family_id or uuid.uuid4(), token_hash=token_hash,
         expires_at=datetime.now(timezone.utc) + timedelta(days=settings.refresh_token_expire_days),
     ))
     db.commit()
@@ -40,6 +43,24 @@ def _issue_session(db: Session, user: User, response: Response) -> TokenOut:
         expires_in=settings.access_token_expire_minutes * 60,
         user=UserOut.model_validate(user),
     )
+
+
+def _revoke_family(db: Session, family_id: uuid.UUID, reason: str, now: datetime) -> None:
+    db.execute(update(RefreshToken)
+               .where(RefreshToken.family_id == family_id, RefreshToken.revoked_at.is_(None))
+               .values(revoked_at=now, revoked_reason=reason))
+
+
+def _cross_site_refused(request: Request) -> bool:
+    """Second line of defence for the cookie endpoints, after SameSite=Strict.
+
+    A browser sends Origin on a cross-site request, so a mismatched Origin is
+    refused even if a proxy or an old browser were to drop the SameSite attribute.
+    """
+    origin = request.headers.get("origin")
+    if not origin:
+        return False                  # same-origin or a non-browser client
+    return origin not in settings.cors_origin_list
 
 
 @router.post("/register", response_model=TokenOut, status_code=201,
@@ -72,6 +93,8 @@ def login(payload: LoginIn, response: Response, db: Session = Depends(get_db)):
 
 @router.post("/refresh", response_model=TokenOut, dependencies=[Depends(auth_limiter)])
 def refresh(request: Request, response: Response, db: Session = Depends(get_db)):
+    if _cross_site_refused(request):
+        raise HTTPException(status_code=403, detail="Cross-site refresh refused.")
     raw = request.cookies.get(COOKIE)
     if not raw:
         raise HTTPException(status_code=401, detail="No session.")
@@ -80,10 +103,17 @@ def refresh(request: Request, response: Response, db: Session = Depends(get_db))
         raise HTTPException(status_code=401, detail="Invalid session.")
     now = datetime.now(timezone.utc)
     if row.revoked_at is not None:
-        # A rotated token was used again: assume theft and end every session of this user.
-        db.execute(update(RefreshToken)
-                   .where(RefreshToken.user_id == row.user_id, RefreshToken.revoked_at.is_(None))
-                   .values(revoked_at=now))
+        grace = timedelta(seconds=settings.refresh_reuse_grace_seconds)
+        benign_race = (row.revoked_reason == "rotated" and row.rotated_at is not None
+                       and now - row.rotated_at <= grace)
+        if benign_race:
+            # Two tabs refreshed at the same instant. Tell the loser to retry and
+            # leave the family alone, so a race cannot log a real user out.
+            raise HTTPException(status_code=401, detail="Session rotation in progress.")
+        # A retired token used after the grace window means it leaked: end the family.
+        _revoke_family(db, row.family_id, "reuse_detected", now)
+        audit.record(db, row.user_id, "auth.refresh_reuse", "user", str(row.user_id),
+                     {"family_id": str(row.family_id)})
         db.commit()
         raise HTTPException(status_code=401, detail="Invalid session.")
     if row.expires_at <= now:
@@ -92,16 +122,20 @@ def refresh(request: Request, response: Response, db: Session = Depends(get_db))
     if user is None or not user.is_active:
         raise HTTPException(status_code=401, detail="Invalid session.")
     row.revoked_at = now            # rotate: each refresh token works once
-    return _issue_session(db, user, response)
+    row.rotated_at = now
+    row.revoked_reason = "rotated"
+    return _issue_session(db, user, response, family_id=row.family_id)
 
 
 @router.post("/logout", status_code=204)
 def logout(request: Request, response: Response, db: Session = Depends(get_db)):
+    if _cross_site_refused(request):
+        raise HTTPException(status_code=403, detail="Cross-site logout refused.")
     raw = request.cookies.get(COOKIE)
     if raw:
         row = db.scalar(select(RefreshToken).where(RefreshToken.token_hash == hash_token(raw)))
-        if row is not None and row.revoked_at is None:
-            row.revoked_at = datetime.now(timezone.utc)
+        if row is not None:
+            _revoke_family(db, row.family_id, "logout", datetime.now(timezone.utc))
             db.commit()
     response.delete_cookie(COOKIE, path=_cookie_path(), httponly=True,
                              secure=settings.is_production, samesite="strict")

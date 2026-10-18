@@ -6,7 +6,7 @@ from sqlalchemy import select
 
 from app.core.config import settings
 from app.main import app
-from app.models import RefreshToken, User
+from app.models import AuditLog, RefreshToken, User
 from app.tests.conftest import PASSWORD, auth, login, make_user
 
 URL = "/api/v1/auth"
@@ -108,6 +108,77 @@ def test_logout_revokes_the_refresh_token(client, db):
 
 def test_refresh_without_cookie_is_401(client):
     assert client.post(f"{URL}/refresh").status_code == 401
+
+
+def test_a_cross_site_refresh_is_refused_even_with_a_valid_cookie(client):
+    register(client)
+    r = client.post(f"{URL}/refresh", headers={"Origin": "https://evil.example"})
+    assert r.status_code == 403                      # SameSite=Strict, plus this check
+
+
+def test_a_refresh_from_the_configured_origin_is_allowed(client):
+    register(client)
+    r = client.post(f"{URL}/refresh", headers={"Origin": "http://localhost:5173"})
+    assert r.status_code == 200
+
+
+def test_a_retired_token_reused_after_the_grace_window_revokes_the_family(client, db, monkeypatch):
+    monkeypatch.setattr(settings, "refresh_reuse_grace_seconds", 0)
+    register(client)
+    old = client.cookies.get("refresh_token")
+    assert client.post(f"{URL}/refresh").status_code == 200      # old is retired here
+
+    thief = TestClient(app)                                      # replays the retired token
+    assert thief.post(f"{URL}/refresh", headers={"Cookie": f"refresh_token={old}"}).status_code == 401
+    assert client.post(f"{URL}/refresh").status_code == 401      # the winner is revoked too
+    db.expire_all()
+    assert any(t.revoked_reason == "reuse_detected" for t in db.scalars(select(RefreshToken)))
+    assert any(a.action == "auth.refresh_reuse" for a in db.scalars(select(AuditLog)))
+
+
+def test_two_tabs_refreshing_at_once_do_not_log_the_user_out(client, monkeypatch):
+    monkeypatch.setattr(settings, "refresh_reuse_grace_seconds", 60)
+    register(client)
+    old = client.cookies.get("refresh_token")
+    assert client.post(f"{URL}/refresh").status_code == 200      # tab A wins the race
+
+    loser = TestClient(app)                                      # tab B used the same cookie
+    assert loser.post(f"{URL}/refresh", headers={"Cookie": f"refresh_token={old}"}).status_code == 401
+    assert client.post(f"{URL}/refresh").status_code == 200      # the session survives
+
+
+def test_rotation_stays_inside_one_family_per_login(client, db):
+    register(client)
+    for _ in range(3):
+        assert client.post(f"{URL}/refresh").status_code == 200
+    rows = list(db.scalars(select(RefreshToken)))
+    assert len({t.family_id for t in rows}) == 1                 # one chain, four tokens
+    assert [t.revoked_reason for t in rows].count("rotated") == 3
+
+
+def test_logout_ends_the_whole_family_not_just_the_current_token(client, db):
+    register(client)
+    old = client.cookies.get("refresh_token")
+    assert client.post(f"{URL}/refresh").status_code == 200
+    assert client.post(f"{URL}/logout").status_code == 204
+
+    other = TestClient(app)
+    assert other.post(f"{URL}/refresh", headers={"Cookie": f"refresh_token={old}"}).status_code == 401
+    db.expire_all()
+    assert all(t.revoked_at is not None for t in db.scalars(select(RefreshToken)))
+
+
+def test_an_expired_refresh_token_is_rejected_without_crying_theft(client, db):
+    register(client)
+    row = db.scalar(select(RefreshToken))
+    row.expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+    db.commit()
+    old = client.cookies.get("refresh_token")
+
+    expired = TestClient(app)
+    assert expired.post(f"{URL}/refresh", headers={"Cookie": f"refresh_token={old}"}).status_code == 401
+    db.expire_all()
+    assert db.scalar(select(RefreshToken)).revoked_reason is None    # no false alarm recorded
 
 
 def test_auth_endpoints_are_rate_limited(client, db, monkeypatch):

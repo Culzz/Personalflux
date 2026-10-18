@@ -7,6 +7,12 @@ os.environ["DATABASE_URL"] = os.environ.get(
 )
 os.environ["JWT_SECRET_KEY"] = "test-secret-key-test-secret-key-0123456789"
 os.environ["RATE_LIMIT_ENABLED"] = "false"
+os.environ["ENABLE_MODEL_POLLER"] = "false"   # tests drive polls explicitly
+os.environ["REFRESH_REUSE_GRACE_SECONDS"] = "0"
+# The statement timeout protects production from a stuck query. In tests the
+# per-test TRUNCATE is the longest statement, and a short timeout only makes the
+# suite flaky on a loaded machine, so it is off here.
+os.environ["DB_STATEMENT_TIMEOUT_MS"] = "0"
 os.environ["APP_ENV"] = "test"
 
 from decimal import Decimal  # noqa: E402
@@ -44,6 +50,9 @@ def _cleanup():
         names = ", ".join(t.name for t in Base.metadata.sorted_tables)
         c.execute(text(f"TRUNCATE {names} RESTART IDENTITY CASCADE"))
     registry.set_model(None)
+    registry.desired_version = None
+    registry.poll_error = None
+    registry.last_check_at = None
     registry.root_override = None
     for limiter in ALL_LIMITERS:
         limiter.clear()
