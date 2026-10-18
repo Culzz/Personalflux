@@ -2,6 +2,7 @@ import { Bookmark, Compass, Home, ShoppingCart, User } from "lucide-react";
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "../features/auth/AuthContext";
 import { useCart } from "../features/cart/CartContext";
+import { CompareBar } from "./CompareBar";
 import { ConsentBanner } from "./ConsentBanner";
 import { PageLoading } from "./States";
 
@@ -89,9 +90,9 @@ export function Layout() {
       </nav>
       <footer className="border-t border-slate-800 px-4 py-4 text-center text-xs text-slate-500">
         <Link to="/about" className="underline hover:text-slate-300">About PersonaFlux</Link>
-        {" · "}A portfolio project using the public Retailrocket dataset. There are no real products,
-        prices or payments.
+        {" · "}A portfolio project with a demo catalog. There are no real products, prices or payments.
       </footer>
+      <CompareBar />
       <ConsentBanner />
     </div>
   );

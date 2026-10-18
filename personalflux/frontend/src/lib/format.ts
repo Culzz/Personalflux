@@ -10,6 +10,14 @@ export function formatPrice(price: string | null | undefined, currency?: string 
   return currency ? `${amount} ${currency}` : amount;
 }
 
+/** A short, honest availability line. A null stock means the source gave no figure. */
+export function stockLabel(stock: number | null, isActive: boolean): string {
+  if (stock === null) return isActive ? "In stock" : "Currently unavailable";
+  if (stock === 0) return "Out of stock";
+  if (stock <= 5) return `Only ${stock} left`;
+  return "In stock";
+}
+
 /** Stable colour per category for placeholder tiles (the dataset has no images). */
 export function categoryHue(category: string | null): number {
   let h = 0;

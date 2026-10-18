@@ -27,6 +27,8 @@ export const productsApi = {
   categories: (signal?: Sig) => api<CategoryCount[]>("/products/categories", { signal }),
   brands: (signal?: Sig) => api<BrandCount[]>("/products/brands", { signal }),
   related: (id: string, signal?: Sig) => api<Product[]>(`/products/${id}/related`, { signal }),
+  compare: (ids: string[], signal?: Sig) =>
+    api<Product[]>("/products/compare", { query: { ids: ids.join(",") }, signal }),
   create: (body: { title: string; description?: string | null; category?: string | null; price?: string | null; image_url?: string | null; is_active?: boolean }) =>
     api<Product>("/products", { method: "POST", body }),
   update: (id: string, body: { title?: string; description?: string | null; category?: string | null; price?: string | null; image_url?: string | null; is_active?: boolean }) =>
@@ -105,14 +107,26 @@ export interface AnalyticsSegments {
 export interface AnalyticsRecs {
   impressions: number;
   recommendation_requests_with_impressions: number;
+  distinct_products_shown: number;
+  impressions_per_request: number | null;
+  catalogue_coverage_ratio: number | null;
+  impressions_by_model_version: Record<string, number>;
+  fallback_impressions: number;
+  fallback_rate: number | null;
   engagement_from_recommendations: Record<string, number>;
+  clicks_from_recommendations: number;
+  attributed_clicks: number;
   click_through_rate: number | null;
+  definitions: Record<string, string>;
 }
 
 export interface MlHealth {
   status: string;
   model_loaded: boolean;
   model_version: string | null;
+  serving_version?: string | null;
+  desired_version?: string | null;
+  worker_behind?: boolean;
   fallback_mode: string | null;
 }
 

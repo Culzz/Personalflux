@@ -38,7 +38,8 @@ describe("preferences", () => {
     await u.click(screen.getByRole("button", { name: "Save preferences" }));
     await waitFor(() => expect(m.called("PATCH /customers/me/preferences")).toHaveLength(1));
     expect(m.called("PATCH /customers/me/preferences")[0].body).toEqual({
-      liked_categories: [], blocked_categories: ["Category A"], price_range: { min: "5", max: "50" },
+      liked_categories: [], blocked_categories: ["Category A"], liked_brands: [],
+      price_range: { min: "5", max: "50" },
     });
   });
 

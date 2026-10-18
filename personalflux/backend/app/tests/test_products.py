@@ -38,6 +38,25 @@ def test_brands_lists_only_active_brands_by_count(client, db, products):
     ]
 
 
+def test_compare_keeps_the_order_asked_for(client, products):
+    ids = f"{products[30].id},{products[10].id}"
+    body = client.get(f"{P}/compare", params={"ids": ids}).json()
+    assert [item["id"] for item in body] == [str(products[30].id), str(products[10].id)]
+
+
+def test_compare_caps_at_four_and_skips_inactive_or_unknown(client, db, products):
+    products[40].is_active = False
+    db.commit()
+    ids = ",".join([str(products[10].id), str(products[40].id), str(uuid.uuid4()),
+                    str(products[20].id), str(products[30].id)])
+    body = client.get(f"{P}/compare", params={"ids": ids}).json()
+    assert [item["id"] for item in body] == [str(products[10].id), str(products[20].id)]
+
+
+def test_compare_rejects_ids_that_are_not_uuids(client):
+    assert client.get(f"{P}/compare", params={"ids": "not-a-uuid"}).status_code == 422
+
+
 def test_page_size_and_sort_are_bounded(client, products):
     assert client.get(P, params={"page_size": 51}).status_code == 422
     assert client.get(P, params={"page": 0}).status_code == 422

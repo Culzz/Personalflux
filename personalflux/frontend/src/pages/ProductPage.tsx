@@ -1,8 +1,8 @@
 import { useEffect, useRef } from "react";
 import { Link, useParams } from "react-router-dom";
+import { CompareButton } from "../components/CompareButton";
 import { ProductCard } from "../components/ProductCard";
-import { ProductImage } from "../components/ProductImage";
-import { RecommendationList } from "../components/RecommendationList";
+import { ProductImage } from "../components/ProductImage";import { RecommendationList } from "../components/RecommendationList";
 import { SaveButton } from "../components/SaveButton";
 import { CardSkeletons, EmptyState, ErrorState, PageLoading } from "../components/States";
 import { useCart } from "../features/cart/CartContext";
@@ -11,7 +11,7 @@ import { useTracking } from "../features/tracking/useTracking";
 import { useAsync } from "../hooks/useAsync";
 import { ApiError } from "../lib/api";
 import { productsApi, recsApi } from "../lib/endpoints";
-import { formatPrice, newKey } from "../lib/format";
+import { formatPrice, newKey, stockLabel } from "../lib/format";
 
 export default function ProductPage() {
   const { id = "" } = useParams();
@@ -55,13 +55,7 @@ export default function ProductPage() {
           <h1 className="text-2xl font-bold">{p.title}</h1>
           <p className="text-xl">{formatPrice(p.price, p.currency)}</p>
           {p.description && <p className="text-slate-300">{p.description}</p>}
-          <p className="text-xs text-slate-500">
-            {p.stock === null
-              ? p.is_active ? "In stock" : "Currently unavailable"
-              : p.stock === 0 ? "Out of stock"
-              : p.stock <= 5 ? `Only ${p.stock} left`
-              : "In stock"}
-          </p>
+          <p className="text-xs text-slate-500">{stockLabel(p.stock, p.is_active)}</p>
           {p.external_url && (
             <a href={p.external_url} target="_blank" rel="noopener noreferrer"
                className="text-sm text-violet-300 underline">
@@ -86,6 +80,7 @@ export default function ProductPage() {
               {inCart ? "In cart" : "Add to cart"}
             </button>
             <SaveButton product={p} />
+            <CompareButton product={p} />
           </div>
           <div className="space-y-1.5">
             <RecommendationTuner product={p} />

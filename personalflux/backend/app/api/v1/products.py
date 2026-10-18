@@ -89,6 +89,24 @@ def list_brands(db: Session = Depends(get_db)):
     return [BrandCount(brand=b, products=n) for b, n in rows]
 
 
+@router.get("/compare", response_model=list[ProductOut])
+def compare_products(ids: str = Query(..., min_length=1, max_length=200),
+                     db: Session = Depends(get_db)):
+    """Two to four products side by side, in the order asked for. Unknown ids are skipped."""
+    wanted = [bit.strip() for bit in ids.split(",") if bit.strip()][:4]
+    try:
+        parsed = [uuid.UUID(bit) for bit in wanted]
+    except ValueError:
+        raise HTTPException(status_code=422,
+                            detail="ids must be a comma-separated list of product ids.")
+    if not parsed:
+        raise HTTPException(status_code=422, detail="Send at least one product id.")
+    rows = db.scalars(select(Product).where(Product.is_active.is_(True),
+                                           Product.id.in_(parsed))).all()
+    by_id = {row.id: row for row in rows}
+    return [by_id[i] for i in parsed if i in by_id]
+
+
 @router.get("/{product_id}", response_model=ProductOut)
 def get_product(product_id: uuid.UUID, user: User | None = Depends(get_optional_user),
                 db: Session = Depends(get_db)):

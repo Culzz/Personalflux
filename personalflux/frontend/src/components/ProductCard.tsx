@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { formatPrice } from "../lib/format";
 import type { Product } from "../lib/types";
+import { CompareButton } from "./CompareButton";
 import { ProductImage } from "./ProductImage";
 
 const REASON_LABELS: Record<string, string> = {
@@ -51,7 +52,10 @@ export function ProductCard({ product, explanation, reasons, onOpen, actions }: 
         )}
         {explanation && <p className="mt-1 text-xs text-slate-400">{explanation}</p>}
       </div>
-      {actions && <div className="flex flex-wrap gap-2">{actions}</div>}
+      <div className="flex flex-wrap gap-2">
+        {actions}
+        <CompareButton product={product} />
+      </div>
     </article>
   );
 }
