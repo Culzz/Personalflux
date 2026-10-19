@@ -117,7 +117,8 @@ export const collectionsApi = {
     api<void>(`/customers/me/collections/${id}/items/${productId}`, { method: "DELETE" }),
 };
 
-export interface AnalyticsOverview {  kind: string;
+export interface AnalyticsOverview {
+  kind: string;
   window_days: number;
   customers_total: number;
   events_total: number;
