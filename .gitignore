@@ -9,5 +9,5 @@
 /trustscore/
 
 # Build outputs that live beside the project rather than inside it.
-/personaflux/personaflux-backend.zip
-/personaflux/personaflux-frontend.zip
+/personalflux/personaflux-backend.zip
+/personalflux/personaflux-frontend.zip
