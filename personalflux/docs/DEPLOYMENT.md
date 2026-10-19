@@ -53,32 +53,116 @@ Two managed pieces, plus the database:
 | piece | host | notes |
 |---|---|---|
 | storefront | **Vercel** | static SPA; set the project root to `personalflux/frontend`; `vercel.json` handles SPA rewrites and asset caching |
-| API | **Render** (or any Docker host) | `render.yaml` at the repository root provisions the service, the database and an artefacts disk |
-| database | Render managed Postgres | created by the blueprint; back it up before anything else |
+| API | **Render** (or any Docker host) | `render.yaml` at the repository root provisions the service and an artefacts disk; the database is *not* created there |
+| database | **Neon** managed Postgres | set `DATABASE_URL` in the Render dashboard; back it up before anything else |
+
+### Why the two hosts share a parent domain
+
+The refresh token is an HttpOnly cookie with `SameSite=Strict`, and the refresh
+endpoint additionally refuses a request whose `Origin` is not in `CORS_ORIGINS`.
+`Strict` means the browser will not attach that cookie to a request that is
+cross-site, and a bare `*.vercel.app` → `*.onrender.com` call is cross-site
+(different registrable domains). Sessions would die on every reload.
+
+So put the storefront and the API on two subdomains of one domain you control:
+
+```
+shop.example.com   ->  Vercel   (custom domain on the frontend project)
+api.example.com    ->  Render   (custom domain on the web service)
+```
+
+Subdomains of the same registrable domain are same-site, so `Strict` keeps
+working and no code change is needed. Both hosts issue TLS for a custom domain
+themselves; nothing to configure here.
 
 ### Deploy the API (Render blueprint)
 
 1. Render → **New → Blueprint** → pick this repository. It reads `render.yaml`.
-2. Set `CORS_ORIGINS` to the Vercel URL, for example `https://personaflux.vercel.app`.
-3. Set `JWT_SECRET_KEY` (the blueprint generates one; never reuse the dev value).
-4. Optional but recommended: set `MODEL_ARTIFACT_URL` to a `.tar.gz` of the
+2. Set `DATABASE_URL` to the Neon connection string (see below).
+3. Set `CORS_ORIGINS` to the storefront origin, for example `https://shop.example.com`.
+4. Set `JWT_SECRET_KEY` (the blueprint generates one; never reuse the dev value).
+5. Optional but recommended: set `MODEL_ARTIFACT_URL` to a `.tar.gz` of the
    artefact directory. The container fetches and verifies it at boot, so the API
    serves the model instead of falling back to database popularity.
+6. Add the custom domain (`api.example.com`) under Settings → Custom Domains.
 
 The container runs `alembic upgrade head` and then two Uvicorn workers. Each
 worker loads the model and **adopts a promotion on its own poll** (`MODEL_POLL_SECONDS`,
 default 10), which is what makes a promotion reach every process without a restart.
 
+### The database (Neon)
+
+Create a project in the same region as the service (Frankfurt → `eu-central-1`),
+then copy the connection string and **edit two things**:
+
+```
+postgresql://u:p@ep-cool-1.eu-central-1.aws.neon.tech/neondb?sslmode=require
+            |
+            v
+postgresql+psycopg://u:p@ep-cool-1.eu-central-1.aws.neon.tech/neondb?sslmode=require
+```
+
+- the `+psycopg` driver marker, which SQLAlchemy needs in order to use psycopg 3
+- `sslmode=require` must survive the copy; Neon refuses an unencrypted connection
+
+Either host works: the direct one (`ep-cool-1…`) or the pooler (`ep-cool-1-pooler…`).
+A URL containing `-pooler` goes through PgBouncer in transaction mode, where a
+prepared statement cannot be reused across transactions, so the engine disables
+psycopg's automatic preparation for those URLs (`app/db/session.py`). Use the
+direct host unless you have a reason not to: two long-lived workers with a small
+pool do not need a pooler.
+
+**Usage billing.** Neon suspends an idle compute and wakes it on the next query.
+Two things here touch the database while nobody is shopping: the readiness probe
+(`/health/db`, polled by the host) and each worker's promotion poll. Between them
+the compute stays awake, which is roughly 730 compute-hours a month against a
+free plan allowance of 191.9. If that matters, pick one:
+
+- a paid Neon plan, which is what keeps promotion and rollback instant;
+- accept the free tier with `MODEL_POLL_SECONDS` raised (say 1800) and
+  `healthCheckPath` changed to `/health`, which lets the compute sleep and costs
+  a promotion a while to reach every worker;
+- run one worker (`WEB_CONCURRENCY=1`).
+
+`pool_pre_ping` is already on, so a connection that Neon closed while suspended is
+discarded rather than served.
+
 ### Deploy the storefront (Vercel)
 
 1. Vercel → **New Project** → same repository → **Root Directory** `personalflux/frontend`.
-2. Environment variable `VITE_API_URL` = the Render API URL (no trailing slash).
+2. Environment variable `VITE_API_URL` = `https://api.example.com` (no trailing slash).
 3. Deploy. `vercel.json` already rewrites client routes to `index.html`.
+4. Add the custom domain (`shop.example.com`) under Settings → Domains, then put
+   that same origin into the API's `CORS_ORIGINS`.
+
+### First run: the database is empty
+
+A fresh Neon branch has the schema (the container migrates it) and no products, so
+the storefront would render an empty catalogue. From a machine with the backend
+virtualenv, pointed at the **direct** Neon host:
+
+```
+cd personalflux/backend
+$env:DATABASE_URL="postgresql+psycopg://…?sslmode=require"
+python ..\scripts\seed_showcase.py                    # described demo products, labelled as demo
+python ..\scripts\import_affiliate_catalog.py "wireless headphones"   # optional: real listings, needs eBay keys
+python ..\scripts\create_admin.py                     # an admin/analyst account for /business and /ml
+```
+
+Then load the model:
+
+```
+POST /api/v1/ml/models/scan               # register artefacts on the disk (validated)
+POST /api/v1/ml/models/{version}/promote  # serve one
+```
+
+`/health/model` returns 503 until every worker has adopted the promoted version;
+`/api/v1/ml/health` names the serving version, the desired version and any poll error.
 
 ### After both are up
 
 ```
-python scripts/smoke_test.py https://your-api.onrender.com
+python scripts/smoke_test.py https://api.example.com
 ```
 
 The smoke test registers a throwaway account and exercises the whole journey.
@@ -115,8 +199,9 @@ therefore fails one request instead of holding a worker and a connection forever
   behind or the artefact disk is empty, restore `MODEL_ARTIFACT_URL` or the disk
   and restart the service. The storefront keeps working either way, because the
   catalogue endpoints do not depend on the model.
-- *Database lost*: restore the most recent backup, then re-run the catalogue
-  importers. Events are append-only and idempotent by key, so replays are safe.
+- *Database lost*: restore from Neon (point-in-time or a branch), then re-run the
+  catalogue importers. Events are append-only and idempotent by key, so replays
+  are safe.
 
 ## Deliberately deferred
 

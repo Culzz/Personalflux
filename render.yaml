@@ -1,22 +1,21 @@
 # Render Blueprint for the PersonaFlux API.
 #
 # The frontend is deployed separately on Vercel; this file provisions the API
-# container, its managed PostgreSQL database, and a small disk for the model
-# artefacts. The repository root contains the project under personalflux/, so
-# every path below is written relative to the repository root.
+# container and a small disk for the model artefacts. The database is NOT created
+# here: it lives on Neon, and DATABASE_URL is set in the dashboard (see below).
+# The repository root contains the project under personalflux/, so every path
+# below is written relative to the repository root.
 #
 #   Dashboard -> New -> Blueprint -> pick this repository.
 #
-# After the first deploy, set CORS_ORIGINS to the Vercel URL (for example
-# https://personaflux.vercel.app) and, optionally, MODEL_ARTIFACT_URL to a
-# tarball of the artefact directory so the API can serve the model immediately.
-databases:
-  - name: personaflux-db
-    databaseName: personaflux
-    user: personaflux
-    plan: basic-256mb
-    postgresMajorVersion: "16"
-
+# After the first deploy, set the three `sync: false` values in the dashboard:
+#   DATABASE_URL        Neon connection string, in sqlalchemy form and with SSL:
+#                       postgresql+psycopg://user:pass@ep-xxx.eu-central-1.aws.neon.tech/neondb?sslmode=require
+#                       (pick the same region as this service, and prefer the
+#                       direct host over the `-pooler` one; both work)
+#   CORS_ORIGINS        the storefront origin, e.g. https://shop.example.com
+#   MODEL_ARTIFACT_URL  a .tar.gz of the artefact directory, optional; without it
+#                       the API serves database popularity instead of the model
 services:
   - type: web
     name: personaflux-api
@@ -34,16 +33,21 @@ services:
     envVars:
       - key: APP_ENV
         value: production
+      # Set in the dashboard: the database is managed by Neon, not by this blueprint.
       - key: DATABASE_URL
-        fromDatabase:
-          name: personaflux-db
-          property: connectionString
+        sync: false
       - key: JWT_SECRET_KEY
         generateValue: true
       - key: MODEL_ARTIFACT_DIR
         value: /artifacts
       - key: WEB_CONCURRENCY
         value: "2"
+      # Each worker polls for a promoted model. This is also what decides how
+      # often the database is touched while nobody is shopping: Neon suspends an
+      # idle compute, and a poll wakes it again. See DEPLOYMENT.md before raising
+      # or lowering this on a usage-billed plan.
+      - key: MODEL_POLL_SECONDS
+        value: "10"
       - key: LOG_LEVEL
         value: INFO
       # Set both of these in the dashboard before going live.
