@@ -85,8 +85,39 @@ export const customerApi = {  preferences: (signal?: Sig) => api<PreferencesResp
     api<void>("/customers/me/delete", { method: "POST", body: { password } }),
 };
 
-export interface AnalyticsOverview {
-  kind: string;
+export interface Collection {
+  id: string;
+  name: string;
+  item_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CollectionDetail {
+  id: string;
+  name: string;
+  items: Product[];
+  created_at: string;
+  updated_at: string;
+}
+
+/** Named lists the customer builds out of saved products. */
+export const collectionsApi = {
+  list: (signal?: Sig) => api<Collection[]>("/customers/me/collections", { signal }),
+  create: (name: string) =>
+    api<Collection>("/customers/me/collections", { method: "POST", body: { name } }),
+  get: (id: string, signal?: Sig) =>
+    api<CollectionDetail>(`/customers/me/collections/${id}`, { signal }),
+  rename: (id: string, name: string) =>
+    api<Collection>(`/customers/me/collections/${id}`, { method: "PATCH", body: { name } }),
+  remove: (id: string) => api<void>(`/customers/me/collections/${id}`, { method: "DELETE" }),
+  addItem: (id: string, productId: string) =>
+    api<void>(`/customers/me/collections/${id}/items/${productId}`, { method: "PUT" }),
+  removeItem: (id: string, productId: string) =>
+    api<void>(`/customers/me/collections/${id}/items/${productId}`, { method: "DELETE" }),
+};
+
+export interface AnalyticsOverview {  kind: string;
   window_days: number;
   customers_total: number;
   events_total: number;

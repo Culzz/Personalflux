@@ -56,6 +56,13 @@ readiness) and `/health/model` (this worker is serving the version the database 
 | GET | `/api/v1/auth/me` | any logged-in user | Me |
 | POST | `/api/v1/auth/refresh` | public (rate-limited) | Refresh |
 | POST | `/api/v1/auth/register` | public (rate-limited) | Register |
+| GET | `/api/v1/customers/me/collections` | logged-in customer (own data only) | List Lists |
+| POST | `/api/v1/customers/me/collections` | logged-in customer (own data only) | Create List |
+| GET | `/api/v1/customers/me/collections/{collection_id}` | logged-in customer (own data only) | Get List |
+| PATCH | `/api/v1/customers/me/collections/{collection_id}` | logged-in customer (own data only) | Rename List |
+| DELETE | `/api/v1/customers/me/collections/{collection_id}` | logged-in customer (own data only) | Delete List |
+| PUT | `/api/v1/customers/me/collections/{collection_id}/items/{product_id}` | logged-in customer (own data only) | Add To List |
+| DELETE | `/api/v1/customers/me/collections/{collection_id}/items/{product_id}` | logged-in customer (own data only) | Remove From List |
 | POST | `/api/v1/customers/me/delete` | logged-in customer (own data only) | Delete Account |
 | GET | `/api/v1/customers/me/export` | logged-in customer (own data only) | Export My Data |
 | GET | `/api/v1/customers/me/history` | logged-in customer (own data only) | Get History |
@@ -92,6 +99,23 @@ readiness) and `/health/model` (this worker is serving the version the database 
 | GET | `/api/v1/recommendations/trending` | public; bearer token or X-Session-Id personalises | Trending |
 | GET | `/health` | see code | Health |
 | GET | `/health/db` | see code | Health Db |
+
+## Curated lists
+
+A list is a named group of products that belongs to one customer. It is how the
+saved items become something a person can organise, and it is the one customer
+area where the collection itself is the resource rather than a single row.
+
+- A customer keeps up to 20 lists, each with a unique name (compared exactly,
+  after trimming and collapsing whitespace), holding up to 100 products.
+- Adding a product that is already on a list changes nothing: the call is
+  idempotent and only a first insertion counts. A first insertion also records a
+  `save` event with `context.source = "collection"`, so the signal reaches the
+  recommender the same way a plain save does, and a repeat does not inflate it.
+- Someone else's list answers `404`, not `403`: a `403` would confirm that the id
+  exists.
+- Limits and duplicate names answer `409` with a message meant to be shown.
+  Deleting a list removes its entries and never touches the products.
 
 ## Recommendation response
 

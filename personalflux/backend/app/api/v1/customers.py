@@ -13,8 +13,8 @@ from app.api.deps import Actor, get_current_user
 from app.api.v1.auth import COOKIE, _cookie_path
 from app.core.security import verify_password
 from app.db.session import get_db
-from app.models import (Interaction, Product, RecommendationImpression,
-                        SavedItem, User)
+from app.models import (Collection, CollectionItem, Interaction, Product,
+                        RecommendationImpression, SavedItem, User)
 from app.schemas.auth import UserOut
 from app.schemas.customer import (DeleteAccountIn, InferredProfile, PreferencesOut,
                                   PreferencesPatch, SavedOut, SettingsPatch)
@@ -149,11 +149,23 @@ def export_my_data(user: User = Depends(get_current_user), db: Session = Depends
         .where(Interaction.user_id == user.id).order_by(Interaction.occurred_at.desc()).limit(5000)
     ).all()
     saved = db.scalars(select(SavedItem.product_id).where(SavedItem.user_id == user.id)).all()
+    lists = [
+        {
+            "name": c.name,
+            "created_at": c.created_at,
+            "product_ids": list(db.scalars(
+                select(CollectionItem.product_id).where(CollectionItem.collection_id == c.id)
+                .order_by(CollectionItem.added_at))),
+        }
+        for c in db.scalars(select(Collection).where(Collection.user_id == user.id)
+                            .order_by(Collection.created_at)).all()
+    ]
     prefs = _preferences_out(db, user)
     body = {
         "profile": UserOut.model_validate(user).model_dump(),
         "preferences": prefs.model_dump(),
         "saved_product_ids": list(saved),
+        "lists": lists,
         "events": [{"event_type": e, "product_id": p, "occurred_at": t, "context": c}
                    for e, p, t, c in events],
     }
@@ -163,8 +175,8 @@ def export_my_data(user: User = Depends(get_current_user), db: Session = Depends
 @router.post("/delete", status_code=204)
 def delete_account(payload: DeleteAccountIn, response: Response,
                    user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    """Deletes the account. Events, preferences, saved items, impressions and sessions are
-    removed by database cascade. Password confirmation is required."""
+    """Deletes the account. Events, preferences, saved items, lists, impressions and
+    sessions are removed by database cascade. Password confirmation is required."""
     if not verify_password(user.password_hash, payload.password):
         raise HTTPException(status_code=403, detail="Incorrect password.")
     db.delete(user)

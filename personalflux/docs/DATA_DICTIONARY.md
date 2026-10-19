@@ -94,6 +94,27 @@ cannot inflate the counts. Indexed by (product_id, created_at) for coverage.
 | product_id | uuid | FK products, restrict, PK |
 | created_at | timestamptz | |
 
+## collections
+
+| column | type | notes |
+|---|---|---|
+| id | uuid | PK |
+| user_id | uuid | FK users, cascade, indexed |
+| name | varchar(80) | unique per user (`uq_collections_user_name`), trimmed before storing |
+| created_at | timestamptz | |
+| updated_at | timestamptz | also touched when an entry is added or removed |
+
+## collection_items
+
+| column | type | notes |
+|---|---|---|
+| collection_id | uuid | FK collections, cascade, PK |
+| product_id | uuid | FK products, restrict, PK |
+| added_at | timestamptz | |
+
+The pair is the primary key, which is what makes adding the same product twice a
+no-op rather than a duplicate.
+
 ## preferences
 
 Explicitly stated only. Inferred interests are computed per request, never stored.

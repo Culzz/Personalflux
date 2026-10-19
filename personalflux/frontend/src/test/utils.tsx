@@ -94,6 +94,7 @@ export const baseRoutes = (over: Record<string, Handler> = {}): Record<string, H
   },
   "POST /recommendations/impressions": { stored: 1 },
   "POST /events": { stored: true },
+  "GET /customers/me/collections": [],
   ...over,
 });
 

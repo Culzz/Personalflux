@@ -13,6 +13,7 @@ import AboutPage from "./pages/AboutPage";
 import AdminPage from "./pages/AdminPage";
 import BusinessPage from "./pages/BusinessPage";
 import CartPage from "./pages/CartPage";
+import CollectionPage from "./pages/CollectionPage";
 import ComparePage from "./pages/ComparePage";
 import DiscoverPage from "./pages/DiscoverPage";
 import HistoryPage from "./pages/HistoryPage";
@@ -58,6 +59,7 @@ export default function App() {
             <Route path="ml" element={<MLPage />} />
             <Route path="admin" element={<AdminPage />} />
             <Route path="saved" element={<SavedPage />} />
+            <Route path="lists/:id" element={<CollectionPage />} />
             <Route path="preferences" element={<PreferencesPage />} />
             <Route path="history" element={<HistoryPage />} />
             <Route path="settings" element={<SettingsPage />} />

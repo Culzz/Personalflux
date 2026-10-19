@@ -15,7 +15,7 @@
   leaves a working shop with popularity fallback.
 - Customers can view, reset, export (`GET /customers/me/export`) and delete
   (`POST /customers/me/delete`, password-confirmed, cascades to events,
-  preferences, saved items, impressions and sessions) their data.
+  preferences, saved items, curated lists, impressions and sessions) their data.
 - History can be cleared per item or wiped entirely.
 
 ## Transport and sessions
