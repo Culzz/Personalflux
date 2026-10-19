@@ -66,8 +66,10 @@ npm run build
 ## ML
 
 Retailrocket data, chronological splits. Results in `ml/reports/test_eval.csv`,
-writeup in `docs/MODEL_CARD.md`. Session-KNN beats popularity on new-item
-discovery; long-term blend helps a little for returning visitors.
+two-stage breakdown in `ml/reports/stage_eval.csv`, writeup in
+`docs/MODEL_CARD.md`. Session-KNN beats popularity on new-item discovery; the
+long-term blend helps a little for returning visitors; most remaining misses are
+items the generator never proposed rather than items it ranked too low.
 
 ## Docs
 

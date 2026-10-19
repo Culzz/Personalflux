@@ -32,6 +32,8 @@ fill in; to my understanding non-commercial, share-alike].
   ALL variant: includes already-viewed items (mostly re-surfacing).
 - Metrics: Recall@K, NDCG@K, MRR, catalog coverage. 95% CIs from bootstrap
   resampling of visitors.
+- Two-stage view on the validation window (ml/reports/stage_eval.csv): candidate
+  recall next to Recall@K, so a miss can be read as retrieval or as ordering.
 
 ## Results (test window, Recall@10)
 | Set | Model | Recall@10 | Notes |
@@ -47,9 +49,40 @@ fill in; to my understanding non-commercial, share-alike].
 
 Validation results agreed on session-KNN vs popularity (+0.088, CI [+0.054, +0.127]).
 
+## Where the recommendation is lost (validation window)
+
+Recall@10 says a model missed; it does not say whether the item was never a
+candidate or was a candidate that got ranked too low. `ml/reports/stage_eval.csv`
+splits every session into hits, items the generator never proposed, and items it
+proposed but ranked below the cut. Candidate recall is the ceiling the ranking
+step works against, so a model using little of it has an ordering problem and a
+model with a low ceiling has a retrieval problem.
+
+NEW variant, 311 sessions, k = 10, validation window:
+
+| Model | candidates/session | candidate recall | Recall@10 | of that ceiling | misses that are retrieval | misses that are ranking |
+|---|---|---|---|---|---|---|
+| popularity (14d) | 500 | 0.136 | 0.015 | 0.11 | 88% | 12% |
+| session-KNN | 197 | 0.296 | 0.103 | 0.35 | 84% | 16% |
+| session hybrid | 688 | 0.368 | 0.093 | 0.25 | 74% | 26% |
+
+- The generator is the bottleneck, not the ordering: 77% of sessions have at
+  least one relevant item the generator never proposed at all, so a better ranker
+  alone cannot fix most misses.
+- Adding popularity to the candidates raises the ceiling from 0.296 to 0.368, but
+  recall@10 falls from 0.103 to 0.093. The extra candidates are mostly
+  irrelevant, and the ranking step spends more of its budget on them (26% of
+  misses are ordering, against 16% for session-KNN). A wider candidate set is
+  only worth it with a ranker that can demote popularity fillers.
+- These are item-level counts of what was lost, not a claim that any single
+  change to the ranker would recover them.
+
 ## Findings
 - Item co-occurrence from the current session clearly beats popularity at
   discovering new items.
+- Most misses are retrieval misses, not ordering misses: the generator never
+  proposes the item. Widening the candidate set without improving the ranking
+  step can lower Recall@10 (see the stage breakdown above).
 - A long-term profile gives a small gain (about 1.5 recall points), but the
   evidence is weak: it was not distinguishable on validation and only just clear
   on test, with few visitors.
