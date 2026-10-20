@@ -92,25 +92,59 @@ default 10), which is what makes a promotion reach every process without a resta
 
 ### The database (Neon)
 
-Create a project in the same region as the service (Frankfurt → `eu-central-1`),
-then copy the connection string and **edit two things**:
+Create the project in the same region as the service (Frankfurt → `eu-central-1`).
+The CLI does the rest: `neon.ts` in the repository root is the service policy, and
+`neon deploy` applies it and writes `.env.local` with the connection details.
 
 ```
-postgresql://u:p@ep-cool-1.eu-central-1.aws.neon.tech/neondb?sslmode=require
-            |
-            v
-postgresql+psycopg://u:p@ep-cool-1.eu-central-1.aws.neon.tech/neondb?sslmode=require
+neon init -y --org-id <org> --project-id <project> --branch production --services postgres
+neon deploy
 ```
 
-- the `+psycopg` driver marker, which SQLAlchemy needs in order to use psycopg 3
-- `sslmode=require` must survive the copy; Neon refuses an unencrypted connection
+`.env.local` then holds three values, and the backend reads that file directly
+(`app/core/config.py` resolves it by path, so it does not matter whether the
+process was started from `backend/` or from `/code` in the container):
 
-Either host works: the direct one (`ep-cool-1…`) or the pooler (`ep-cool-1-pooler…`).
-A URL containing `-pooler` goes through PgBouncer in transaction mode, where a
-prepared statement cannot be reused across transactions, so the engine disables
-psycopg's automatic preparation for those URLs (`app/db/session.py`). Use the
-direct host unless you have a reason not to: two long-lived workers with a small
-pool do not need a pooler.
+| variable | what it is |
+|---|---|
+| `DATABASE_URL` | the pooler endpoint |
+| `DATABASE_URL_UNPOOLED` | the same database, direct |
+| `NEON_BRANCH` | the branch that was deployed |
+
+**Which one the app opens.** The direct endpoint, when it is published. Neon's
+pooler is PgBouncer in transaction mode: it rejects the startup parameter that
+carries the statement timeout (`unsupported startup parameter in options:
+statement_timeout`), and a prepared statement cannot be reused across
+transactions there. A long-running container with a small pool does not need the
+pooler, so `Settings.connection_url` prefers `DATABASE_URL_UNPOOLED` and the
+statement timeout survives. A host that publishes only one URL still works: the
+engine then drops the startup parameter and disables psycopg's automatic
+preparation instead (`app/db/session.py`).
+
+The `+psycopg` driver marker is **not** something you need to add by hand. Neon
+hands out `postgresql://`, which SQLAlchemy would read as "use psycopg2" (not
+installed); the settings layer rewrites the scheme to `postgresql+psycopg://`.
+`sslmode=require` must survive the copy — Neon refuses an unencrypted connection.
+
+For the Render service, set `DATABASE_URL` to the **`DATABASE_URL_UNPOOLED`**
+value from `.env.local` (with the `postgresql+psycopg://` scheme, though either
+form works now). Setting it to the pooler URL also connects, minus the statement
+timeout.
+
+**Usage billing.** Neon suspends an idle compute and wakes it on the next query.
+Two things here touch the database while nobody is shopping: the readiness probe
+(`/health/db`, polled by the host) and each worker's promotion poll. Between them
+the compute stays awake, which is roughly 730 compute-hours a month against a
+free plan allowance of 191.9. If that matters, pick one:
+
+- a paid Neon plan, which is what keeps promotion and rollback instant;
+- accept the free tier with `MODEL_POLL_SECONDS` raised (say 1800) and
+  `healthCheckPath` changed to `/health`, which lets the compute sleep and costs
+  a promotion a while to reach every worker;
+- run one worker (`WEB_CONCURRENCY=1`).
+
+`pool_pre_ping` is already on, so a connection that Neon closed while suspended is
+discarded rather than served.
 
 **Usage billing.** Neon suspends an idle compute and wakes it on the next query.
 Two things here touch the database while nobody is shopping: the readiness probe
@@ -137,13 +171,13 @@ discarded rather than served.
 
 ### First run: the database is empty
 
-A fresh Neon branch has the schema (the container migrates it) and no products, so
-the storefront would render an empty catalogue. From a machine with the backend
-virtualenv, pointed at the **direct** Neon host:
+A fresh Neon branch has no tables and no products. With `.env.local` in place the
+scripts read the same connection the API does, so nothing has to be exported by
+hand:
 
 ```
 cd personalflux/backend
-$env:DATABASE_URL="postgresql+psycopg://…?sslmode=require"
+python -m alembic upgrade head                        # normally the container does this
 python ..\scripts\seed_showcase.py                    # described demo products, labelled as demo
 python ..\scripts\import_affiliate_catalog.py "wireless headphones"   # optional: real listings, needs eBay keys
 python ..\scripts\create_admin.py                     # an admin/analyst account for /business and /ml

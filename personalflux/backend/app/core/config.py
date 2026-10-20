@@ -1,5 +1,32 @@
+from pathlib import Path
+
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def env_file_paths(here: Path) -> tuple[str, ...]:
+    """The dotenv files to read, lowest priority first.
+
+    `backend/.env` holds a developer's own overrides. `.env.local` at the
+    repository root is the file `neon init` and `neon deploy` write, so it wins
+    when both exist: one source of truth for the provisioned database rather than
+    a copy pasted into two places.
+
+    Paths are resolved from this file rather than from the working directory,
+    because the API is started from `backend/` locally and from `/code` in the
+    container, while the repository root is a different number of levels up in
+    each. A layout too shallow to have a parent at that depth (the image) is
+    skipped rather than raising.
+    """
+    paths: list[str] = []
+    for depth, name in ((2, ".env"), (4, ".env.local")):
+        try:
+            candidate = here.parents[depth] / name
+        except IndexError:
+            continue
+        if candidate.is_file():
+            paths.append(str(candidate))
+    return tuple(paths) or (".env",)
 
 
 class Settings(BaseSettings):
@@ -7,6 +34,9 @@ class Settings(BaseSettings):
     app_name: str = "PersonaFlux"
     api_v1_prefix: str = "/api/v1"
     database_url: str          # required: the app refuses to start without it
+    # Neon publishes a direct connection beside the pooled one. Migrations want
+    # the direct one; see migration_database_url.
+    database_url_unpooled: str | None = None
     jwt_secret_key: str        # required: generate a long random value
     access_token_expire_minutes: int = 30
     refresh_token_expire_days: int = 14
@@ -37,7 +67,26 @@ class Settings(BaseSettings):
     ebay_oauth_scope: str = "https://api.ebay.com/oauth/api_scope"
     affiliate_campaign_id: str | None = None
 
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=env_file_paths(Path(__file__).resolve()), extra="ignore"
+    )
+
+    @field_validator("database_url", "database_url_unpooled")
+    @classmethod
+    def _psycopg_driver(cls, v: str | None) -> str | None:
+        """Name psycopg 3 explicitly in a plain Postgres URL.
+
+        Hosts hand out `postgresql://…` (Neon does, and so does every Heroku-era
+        example). SQLAlchemy reads that as "use psycopg2", which is not installed
+        here, so the first query would fail with an import error. Rewriting the
+        scheme is what lets a copied connection string work unchanged.
+        """
+        if v is None:
+            return v
+        for prefix in ("postgresql://", "postgres://"):
+            if v.startswith(prefix):
+                return "postgresql+psycopg://" + v[len(prefix):]
+        return v
 
     @field_validator("jwt_secret_key")
     @classmethod
@@ -49,6 +98,28 @@ class Settings(BaseSettings):
     @property
     def is_production(self) -> bool:
         return self.app_env.lower() == "production"
+
+    @property
+    def connection_url(self) -> str:
+        """The connection this process uses, for both queries and migrations.
+
+        Neon publishes two endpoints: a pooler for short-lived and serverless
+        clients, and a direct connection for long-running ones. This is a
+        long-running server with a small pool, and the pooler rejects the startup
+        parameter that carries the statement timeout ("unsupported startup
+        parameter in options"), so the direct endpoint is preferred when the host
+        offers one. Hosts that publish a single URL fall back to it, and the
+        engine stays usable behind a pooler either way.
+
+        The direct URL only counts when the configured URL is the pooler beside
+        it. Otherwise a stale `.env.local` would silently redirect a database
+        someone chose deliberately — a test run, or a machine pointed at staging
+        for the afternoon — which is the kind of mix-up that truncates the wrong
+        database.
+        """
+        if self.database_url_unpooled and "-pooler" in self.database_url:
+            return self.database_url_unpooled
+        return self.database_url
 
     @property
     def cors_origin_list(self) -> list[str]:

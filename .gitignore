@@ -11,3 +11,6 @@
 # Build outputs that live beside the project rather than inside it.
 /personalflux/personaflux-backend.zip
 /personalflux/personaflux-frontend.zip
+.neon
+node_modules/
+.env.local

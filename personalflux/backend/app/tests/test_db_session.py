@@ -17,7 +17,9 @@ def test_a_pooled_url_also_turns_prepared_statements_off():
     url = "postgresql+psycopg://u:p@ep-cool-1-pooler.eu-central-1.aws.neon.tech/neondb?sslmode=require"
     args = connect_args_for(url, 15000)
     assert args["prepare_threshold"] is None
-    assert args["options"] == "-c statement_timeout=15000"
+    # And no startup parameter: PgBouncer rejects the ones it does not know, which
+    # is how Neon answers "unsupported startup parameter in options".
+    assert "options" not in args
 
 
 def test_a_direct_url_keeps_prepared_statements():

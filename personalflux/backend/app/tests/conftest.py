@@ -5,6 +5,10 @@ os.environ["DATABASE_URL"] = os.environ.get(
     "TEST_DATABASE_URL",
     "postgresql+psycopg://personalflux:change-me-dev-only@localhost:5432/personalflux_test",
 )
+# A developer with a Neon project has both URLs in .env.local. The direct one is
+# not part of the test database choice, and leaving it set would let a test run
+# reach a hosted database.
+os.environ.pop("DATABASE_URL_UNPOOLED", None)
 os.environ["JWT_SECRET_KEY"] = "test-secret-key-test-secret-key-0123456789"
 os.environ["RATE_LIMIT_ENABLED"] = "false"
 os.environ["ENABLE_MODEL_POLLER"] = "false"   # tests drive polls explicitly

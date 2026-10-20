@@ -9,12 +9,17 @@ so every price shown is consistent between runs. Demo prices are not real
 retail prices.
 """
 import os
+import sys
 from decimal import Decimal
+from pathlib import Path
 
-os.environ.setdefault(
-    "DATABASE_URL",
-    "postgresql+psycopg://personalflux:change-me-dev-only@localhost:5432/personalflux",
-)
+# Run by path from anywhere: the application package lives under backend/.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
+
+# The target database comes from the environment or from the same dotenv files
+# the API reads (.env.local at the repository root, then backend/.env). It is not
+# defaulted here: a wrong default would quietly seed the local database while a
+# hosted one stayed empty.
 os.environ.setdefault("JWT_SECRET_KEY", "dev-only-secret-dev-only-secret-0123456789")
 
 from sqlalchemy import delete, func, select, text  # noqa: E402
