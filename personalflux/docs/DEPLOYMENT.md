@@ -48,47 +48,100 @@ presented as a real listing. All three are idempotent.
 
 ## Production
 
-Two managed pieces, plus the database:
+Four moving parts:
 
 | piece | host | notes |
 |---|---|---|
 | storefront | **Vercel** | static SPA; set the project root to `personalflux/frontend`; `vercel.json` handles SPA rewrites and asset caching |
-| API | **Render** (or any Docker host) | `render.yaml` at the repository root provisions the service and an artefacts disk; the database is *not* created there |
-| database | **Neon** managed Postgres | set `DATABASE_URL` in the Render dashboard; back it up before anything else |
+| API | **Fly.io** | `personalflux/backend/fly.toml` is the app definition; the machine suspends when idle, which is also what lets the Neon compute sleep |
+| database | **Neon** managed Postgres | provisioned with `neon deploy`; credentials live in `.env.local`, secrets are set on the app |
+| model artefact | **Cloudflare R2** (or any static URL) | a `.tar.gz` the container fetches once into its volume |
 
 ### Why the two hosts share a parent domain
 
 The refresh token is an HttpOnly cookie with `SameSite=Strict`, and the refresh
 endpoint additionally refuses a request whose `Origin` is not in `CORS_ORIGINS`.
 `Strict` means the browser will not attach that cookie to a request that is
-cross-site, and a bare `*.vercel.app` → `*.onrender.com` call is cross-site
+cross-site, and a bare `*.vercel.app` to `*.fly.dev` call is cross-site
 (different registrable domains). Sessions would die on every reload.
 
 So put the storefront and the API on two subdomains of one domain you control:
 
 ```
 shop.example.com   ->  Vercel   (custom domain on the frontend project)
-api.example.com    ->  Render   (custom domain on the web service)
+api.example.com    ->  Fly      (fly certs add api.example.com)
 ```
 
 Subdomains of the same registrable domain are same-site, so `Strict` keeps
 working and no code change is needed. Both hosts issue TLS for a custom domain
 themselves; nothing to configure here.
 
-### Deploy the API (Render blueprint)
+### Deploy the API (Fly.io)
 
-1. Render → **New → Blueprint** → pick this repository. It reads `render.yaml`.
-2. Set `DATABASE_URL` to the Neon connection string (see below).
-3. Set `CORS_ORIGINS` to the storefront origin, for example `https://shop.example.com`.
-4. Set `JWT_SECRET_KEY` (the blueprint generates one; never reuse the dev value).
-5. Optional but recommended: set `MODEL_ARTIFACT_URL` to a `.tar.gz` of the
-   artefact directory. The container fetches and verifies it at boot, so the API
-   serves the model instead of falling back to database popularity.
-6. Add the custom domain (`api.example.com`) under Settings → Custom Domains.
+From `personalflux/backend`, with `flyctl` installed and `fly auth login` done:
+
+```
+fly launch --no-deploy --name personaflux-api --region fra   # keeps the existing fly.toml
+fly volumes create artifacts --size 1 --region fra
+fly secrets set DATABASE_URL="..." JWT_SECRET_KEY="..." CORS_ORIGINS="https://shop.example.com" MODEL_ARTIFACT_URL="..."
+fly deploy
+fly certs add api.example.com
+```
+
+`fly launch` is only there to register the app name; it will notice `fly.toml`
+and leave it alone. If the name is taken, pick another and change `app` in
+`fly.toml` to match.
+
+`DATABASE_URL` is the **`DATABASE_URL_UNPOOLED`** value from `.env.local` (either
+`postgresql://` or `postgresql+psycopg://` works; the settings layer names the
+driver). `JWT_SECRET_KEY` must be new: `python -c "import secrets;
+print(secrets.token_urlsafe(48))"`.
 
 The container runs `alembic upgrade head` and then two Uvicorn workers. Each
-worker loads the model and **adopts a promotion on its own poll** (`MODEL_POLL_SECONDS`,
-default 10), which is what makes a promotion reach every process without a restart.
+worker loads the model and **adopts a promotion on its own poll**
+(`MODEL_POLL_SECONDS`, default 10), which is what makes a promotion reach every
+process without a restart.
+
+**Why suspend mode matters here.** `auto_stop_machines = "suspend"` in `fly.toml`
+with `min_machines_running = 0` means an idle app stops querying Postgres, and
+Neon suspends its compute in turn: that pairing is what keeps a hobby deployment
+inside Neon's free allowance instead of burning ~730 compute-hours a month. The
+price is a wake-up on the first request after a quiet spell (a memory restore,
+not a cold boot, because the machine is suspended rather than stopped). Set
+`min_machines_running = 1` if you would rather pay for warmth. The platform check
+hits `/health`, not `/health/db`, so a sleeping database cannot look like a broken
+container.
+
+### Hosting the model artefact
+
+The container fetches `MODEL_ARTIFACT_URL` at boot when `/artifacts` is empty, then
+keeps it in the volume. Any URL that answers an unauthenticated GET works.
+Cloudflare R2 is free at this size and charges no egress:
+
+```
+npx wrangler r2 bucket create personaflux-artifacts
+npx wrangler r2 object put personaflux-artifacts/model/personaflux-v0.1.tar.gz \
+  --file "%TEMP%\opencode\personaflux-artifacts-v0.1.tar.gz"
+```
+
+Then enable a public URL for the bucket (R2 → Settings → Public access) and use
+`https://pub-<hash>.r2.dev/model/personaflux-v0.1.tar.gz`.
+
+The tarball must contain the version directory at its top level, because that is
+what the registry scans for:
+
+```
+personaflux-v0.1-20261013-222549/metadata.json
+personaflux-v0.1-20261013-222549/items.npy
+personaflux-v0.1-20261013-222549/item_meta.parquet
+personaflux-v0.1-20261013-222549/popularity.json
+personaflux-v0.1-20261013-222549/similarity.npz
+```
+
+`items.npy` and the parquet are derived from the Retailrocket dataset, whose terms
+are non-commercial: publish them to a bucket you control, not to a public release
+of the repository. Without the artefact the API still serves, from database
+popularity, and says so on `/api/v1/ml/health`.
 
 ### The database (Neon)
 
@@ -126,7 +179,7 @@ hands out `postgresql://`, which SQLAlchemy would read as "use psycopg2" (not
 installed); the settings layer rewrites the scheme to `postgresql+psycopg://`.
 `sslmode=require` must survive the copy — Neon refuses an unencrypted connection.
 
-For the Render service, set `DATABASE_URL` to the **`DATABASE_URL_UNPOOLED`**
+For the Fly app, set `DATABASE_URL` to the **`DATABASE_URL_UNPOOLED`**
 value from `.env.local` (with the `postgresql+psycopg://` scheme, though either
 form works now). Setting it to the pooler URL also connects, minus the statement
 timeout.
@@ -180,7 +233,7 @@ cd personalflux/backend
 python -m alembic upgrade head                        # normally the container does this
 python ..\scripts\seed_showcase.py                    # described demo products, labelled as demo
 python ..\scripts\import_affiliate_catalog.py "wireless headphones"   # optional: real listings, needs eBay keys
-python ..\scripts\create_admin.py                     # an admin/analyst account for /business and /ml
+python ..\scripts\create_admin.py --email you@example.com   # prompts for the password, hidden
 ```
 
 Then load the model:
@@ -226,8 +279,9 @@ keeps serving. If a worker never catches up, `/health/model` stays 503 and names
 therefore fails one request instead of holding a worker and a connection forever.
 
 **Recovery.**
-- *Bad deploy*: Render keeps the previous image; redeploy it. Migrations are
-  additive in this project, so a rollback does not need a down migration.
+- *Bad deploy*: `fly releases` then `fly deploy --image <previous image>`; the
+  previous release keeps running until the new one passes its check. Migrations
+  are additive in this project, so a rollback does not need a down migration.
 - *Bad model promoted*: promote the previous version. No restart, no redeploy.
 - *API unhealthy but database fine*: check `/health/model`; if the poller is
   behind or the artefact disk is empty, restore `MODEL_ARTIFACT_URL` or the disk

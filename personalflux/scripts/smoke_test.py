@@ -1,6 +1,6 @@
 """End-to-end smoke test against a running API.
 
-    python scripts/smoke_test.py https://personaflux-api.onrender.com
+    python scripts/smoke_test.py https://api.example.com
 
 Checks the things that break when the pieces are wired together: the service is
 up, the database is reachable, the catalogue answers, an account can be created,

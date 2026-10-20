@@ -1,0 +1,57 @@
+# Fly.io app definition for the API.
+#
+#   fly volumes create artifacts --size 1 --region fra
+#   fly secrets set DATABASE_URL=... JWT_SECRET_KEY=... CORS_ORIGINS=... MODEL_ARTIFACT_URL=...
+#   fly deploy
+#
+# Region: Frankfurt (fra), the same as the Neon project (eu-central-1), so a
+# query crosses a city rather than an ocean.
+app = "personaflux-api"
+primary_region = "fra"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  APP_ENV = "production"
+  MODEL_ARTIFACT_DIR = "/artifacts"
+  WEB_CONCURRENCY = "2"
+  MODEL_POLL_SECONDS = "10"
+  LOG_LEVEL = "INFO"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  # "suspend" keeps the machine's memory on disk while it is idle, so a wake is a
+  # restore rather than a cold Python start, and the daemon stops touching Postgres
+  # in between: Neon can suspend its compute, which is what keeps the free plan
+  # inside its monthly hours.
+  auto_stop_machines = "suspend"
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ["app"]
+
+  [http_service.concurrency]
+    type = "requests"
+    hard_limit = 200
+    soft_limit = 100
+
+  [[http_service.checks]]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "25s"
+    method = "GET"
+    path = "/health"
+    # Liveness, not readiness: /health/db would let a suspended Neon compute decide
+    # whether the platform keeps restarting the machine. Readiness is still exposed
+    # for the smoke test and for humans.
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "1gb"
+
+[[mounts]]
+  source = "artifacts"
+  destination = "/artifacts"
+  # The tarball is downloaded once into this volume. Without it, every wake
+  # re-fetches the model from MODEL_ARTIFACT_URL.
