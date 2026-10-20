@@ -63,8 +63,8 @@ check("liveness /health", status == 200 and body.get("status") == "ok", f"{statu
 status, body = call("GET", "/health/db")
 check("readiness /health/db", status == 200, f"{status} {body}")
 
-status, body = call("GET", "/ml/health")
-check("model /ml/health answers", status == 200, f"{status} {body}")
+status, body = call("GET", f"{API}/ml/health")
+check("model /api/v1/ml/health answers", status == 200, f"{status} {body}")
 if status == 200 and not body.get("model_loaded"):
     print(f"  NOTE  model not loaded; recommending from database popularity ({body.get('fallback_mode')})")
 
