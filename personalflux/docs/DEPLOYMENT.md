@@ -53,70 +53,104 @@ Four moving parts:
 | piece | host | notes |
 |---|---|---|
 | storefront | **Vercel** | static SPA; set the project root to `personalflux/frontend`; `vercel.json` handles SPA rewrites and asset caching |
-| API | **Fly.io** | `personalflux/backend/fly.toml` is the app definition; the machine suspends when idle, which is also what lets the Neon compute sleep |
-| database | **Neon** managed Postgres | provisioned with `neon deploy`; credentials live in `.env.local`, secrets are set on the app |
-| model artefact | **Cloudflare R2** (or any static URL) | a `.tar.gz` the container fetches once into its volume |
+| API | **Cloud Run** | `gcloud run deploy --source` builds the existing Dockerfile; the service scales to zero, which is also what lets the Neon compute sleep |
+| database | **Neon** managed Postgres | provisioned with `neon deploy`; credentials live in `.env.local`, secrets are set on the service |
+| model artefact | **Cloudflare R2** (or any static URL) | a `.tar.gz` the container downloads on each cold start |
 
 ### Why the two hosts share a parent domain
 
 The refresh token is an HttpOnly cookie with `SameSite=Strict`, and the refresh
 endpoint additionally refuses a request whose `Origin` is not in `CORS_ORIGINS`.
 `Strict` means the browser will not attach that cookie to a request that is
-cross-site, and a bare `*.vercel.app` to `*.fly.dev` call is cross-site
+cross-site, and a bare `*.vercel.app` to `*.run.app` call is cross-site
 (different registrable domains). Sessions would die on every reload.
 
 So put the storefront and the API on two subdomains of one domain you control:
 
 ```
-shop.example.com   ->  Vercel   (custom domain on the frontend project)
-api.example.com    ->  Fly      (fly certs add api.example.com)
+shop.example.com   ->  Vercel       (custom domain on the frontend project)
+api.example.com    ->  Cloud Run    (domain mapping, CNAME to ghs.googlehosted.com)
 ```
 
 Subdomains of the same registrable domain are same-site, so `Strict` keeps
 working and no code change is needed. Both hosts issue TLS for a custom domain
 themselves; nothing to configure here.
 
-### Deploy the API (Fly.io)
+### Deploy the API (Cloud Run)
 
-From `personalflux/backend`, with `flyctl` installed and `fly auth login` done:
+One-time project setup, then a single deploy command. From `personalflux/backend`,
+which is where the Dockerfile lives:
 
 ```
-fly launch --no-deploy --name personaflux-api --region fra   # keeps the existing fly.toml
-fly volumes create artifacts --size 1 --region fra
-fly secrets set DATABASE_URL="..." JWT_SECRET_KEY="..." CORS_ORIGINS="https://shop.example.com" MODEL_ARTIFACT_URL="..."
-fly deploy
-fly certs add api.example.com
+gcloud auth login
+gcloud config set project <project-id>
+gcloud services enable run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com secretmanager.googleapis.com
 ```
 
-`fly launch` is only there to register the app name; it will notice `fly.toml`
-and leave it alone. If the name is taken, pick another and change `app` in
-`fly.toml` to match.
+Put the two credentials in Secret Manager rather than in plain environment
+variables (free at this scale, and the database password stays out of the
+revision listing):
 
-`DATABASE_URL` is the **`DATABASE_URL_UNPOOLED`** value from `.env.local` (either
-`postgresql://` or `postgresql+psycopg://` works; the settings layer names the
-driver). `JWT_SECRET_KEY` must be new: `python -c "import secrets;
-print(secrets.token_urlsafe(48))"`.
+```
+printf '%s' "<DATABASE_URL_UNPOOLED from .env.local>" | gcloud secrets create personaflux-database-url --data-file=-
+printf '%s' "<48 random characters>"                  | gcloud secrets create personaflux-jwt-secret --data-file=-
+```
 
-The container runs `alembic upgrade head` and then two Uvicorn workers. Each
-worker loads the model and **adopts a promotion on its own poll**
-(`MODEL_POLL_SECONDS`, default 10), which is what makes a promotion reach every
-process without a restart.
+```
+gcloud run deploy personaflux-api \
+  --source . \
+  --region europe-west3 \
+  --allow-unauthenticated \
+  --cpu 1 --memory 1Gi --concurrency 80 \
+  --min-instances 0 --max-instances 2 \
+  --cpu-boost --timeout 300 \
+  --set-env-vars APP_ENV=production,MODEL_ARTIFACT_DIR=/tmp/artifacts,WEB_CONCURRENCY=1,MODEL_POLL_SECONDS=10,LOG_LEVEL=INFO,CORS_ORIGINS=https://shop.example.com,MODEL_ARTIFACT_URL=<r2 url> \
+  --set-secrets DATABASE_URL=personaflux-database-url:latest,JWT_SECRET_KEY=personaflux-jwt-secret:latest \
+  --startup-probe-http-path /health --startup-probe-initial-delay 5 \
+  --startup-probe-period 10 --startup-probe-timeout 5 --startup-probe-failure-threshold 30
+```
 
-**Why suspend mode matters here.** `auto_stop_machines = "suspend"` in `fly.toml`
-with `min_machines_running = 0` means an idle app stops querying Postgres, and
-Neon suspends its compute in turn: that pairing is what keeps a hobby deployment
-inside Neon's free allowance instead of burning ~730 compute-hours a month. The
-price is a wake-up on the first request after a quiet spell (a memory restore,
-not a cold boot, because the machine is suspended rather than stopped). Set
-`min_machines_running = 1` if you would rather pay for warmth. The platform check
-hits `/health`, not `/health/db`, so a sleeping database cannot look like a broken
-container.
+`--source .` builds the existing `Dockerfile` with Cloud Build and pushes it to
+Artifact Registry, so no image has to be built by hand. The container command is
+unchanged: `alembic upgrade head`, then Uvicorn on `$PORT`, which Cloud Run sets.
+
+Why these values:
+
+- **`--min-instances 0`** is the whole reason for choosing Cloud Run: an idle
+  service stops querying Postgres, Neon suspends its compute in turn, and a hobby
+  deployment stays inside Neon's 191.9 free compute-hours instead of burning ~730.
+- **`--max-instances 2`** bounds how many connections the database can see. Each
+  instance holds a pool of 5 (+10 overflow), which is well inside Neon's limit.
+- **`WEB_CONCURRENCY=1`** because the instance has one vCPU and one gigabyte; two
+  workers would sit near the memory ceiling for no throughput gain at this size.
+  Concurrency 80 is handled by the async event loop and the DB threadpool.
+- **`--cpu-boost`** and the **startup probe** cover the first boot, which loads
+  numpy and the model before it answers anything.
+- Under Cloud Run's default CPU throttling the in-process promotion poll only runs
+  while requests are being served, so a promotion is adopted on the next request
+  rather than while the service sleeps. `--no-cpu-throttling` keeps a poller
+  running, at the cost of always-allocated CPU.
+
+Custom domain, and the CNAME record it asks for:
+
+```
+gcloud beta run domain-mappings create --service personaflux-api --domain api.example.com --region europe-west3
+```
+
+**What this costs.** Cloud Run's always-free tier (2M requests, 360k GB-seconds,
+180k vCPU-seconds a month) covers a portfolio deployment, but Google requires a
+billing account with a card attached before the service can be created. The free
+tier is North-America-centric for egress, so `europe-west3` can add pennies; the
+image in Artifact Registry exceeds the 0.5 GB free storage by a little. Expect a
+few cents a month rather than zero, and set a budget alert.
 
 ### Hosting the model artefact
 
-The container fetches `MODEL_ARTIFACT_URL` at boot when `/artifacts` is empty, then
-keeps it in the volume. Any URL that answers an unauthenticated GET works.
-Cloudflare R2 is free at this size and charges no egress:
+The container downloads `MODEL_ARTIFACT_URL` into `/tmp/artifacts` when it starts
+and the directory is empty. Cloud Run's filesystem is memory, so this happens on
+every cold start — 13 MB, once per scale-up, not per request. Any URL that answers
+an unauthenticated GET works; Cloudflare R2 is free at this size and charges no
+egress:
 
 ```
 npx wrangler r2 bucket create personaflux-artifacts
@@ -179,7 +213,7 @@ hands out `postgresql://`, which SQLAlchemy would read as "use psycopg2" (not
 installed); the settings layer rewrites the scheme to `postgresql+psycopg://`.
 `sslmode=require` must survive the copy — Neon refuses an unencrypted connection.
 
-For the Fly app, set `DATABASE_URL` to the **`DATABASE_URL_UNPOOLED`**
+For the Cloud Run service, set `DATABASE_URL` to the **`DATABASE_URL_UNPOOLED`**
 value from `.env.local` (with the `postgresql+psycopg://` scheme, though either
 form works now). Setting it to the pooler URL also connects, minus the statement
 timeout.
@@ -279,14 +313,16 @@ keeps serving. If a worker never catches up, `/health/model` stays 503 and names
 therefore fails one request instead of holding a worker and a connection forever.
 
 **Recovery.**
-- *Bad deploy*: `fly releases` then `fly deploy --image <previous image>`; the
-  previous release keeps running until the new one passes its check. Migrations
-  are additive in this project, so a rollback does not need a down migration.
+- *Bad deploy*: `gcloud run revisions list` then
+  `gcloud run services update-traffic personaflux-api --to-revisions <previous>=100`.
+  The previous revision keeps running until the new one passes its startup probe.
+  Migrations are additive in this project, so a rollback does not need a down
+  migration.
 - *Bad model promoted*: promote the previous version. No restart, no redeploy.
 - *API unhealthy but database fine*: check `/health/model`; if the poller is
-  behind or the artefact disk is empty, restore `MODEL_ARTIFACT_URL` or the disk
-  and restart the service. The storefront keeps working either way, because the
-  catalogue endpoints do not depend on the model.
+  behind or the artefact fetch failed, restore `MODEL_ARTIFACT_URL` and redeploy a
+  revision, or promote a model that is already on disk. The storefront keeps
+  working either way, because the catalogue endpoints do not depend on the model.
 - *Database lost*: restore from Neon (point-in-time or a branch), then re-run the
   catalogue importers. Events are append-only and idempotent by key, so replays
   are safe.
