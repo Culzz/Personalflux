@@ -25,6 +25,11 @@ def _cookie_path() -> str:
     return f"{settings.api_v1_prefix}/auth"
 
 
+def _cookie_secure() -> bool:
+    """A SameSite=None cookie is only stored by a browser when it is Secure."""
+    return settings.is_production or settings.refresh_cookie_samesite == "none"
+
+
 def _issue_session(db: Session, user: User, response: Response,
                    family_id: uuid.UUID | None = None) -> TokenOut:
     """New access token (in the response body) + rotating refresh token (HttpOnly cookie)."""
@@ -36,7 +41,8 @@ def _issue_session(db: Session, user: User, response: Response,
     db.commit()
     response.set_cookie(
         COOKIE, raw, max_age=settings.refresh_token_expire_days * 86400,
-        httponly=True, secure=settings.is_production, samesite="strict", path=_cookie_path(),
+        httponly=True, secure=_cookie_secure(),
+        samesite=settings.refresh_cookie_samesite, path=_cookie_path(),
     )
     return TokenOut(
         access_token=create_access_token(user.id, user.role),
@@ -138,7 +144,7 @@ def logout(request: Request, response: Response, db: Session = Depends(get_db)):
             _revoke_family(db, row.family_id, "logout", datetime.now(timezone.utc))
             db.commit()
     response.delete_cookie(COOKIE, path=_cookie_path(), httponly=True,
-                             secure=settings.is_production, samesite="strict")
+                             secure=_cookie_secure(), samesite=settings.refresh_cookie_samesite)
 
 
 @router.get("/me", response_model=UserOut)

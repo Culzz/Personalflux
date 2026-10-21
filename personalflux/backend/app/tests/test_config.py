@@ -99,3 +99,15 @@ def test_the_engine_uses_the_database_the_suite_selected():
 def test_a_hostile_secret_is_still_refused():
     with pytest.raises(ValueError):
         _settings(database_url="sqlite://", jwt_secret_key="short")
+
+
+@pytest.mark.parametrize(
+    "given,expected", [("Strict", "strict"), (" lax ", "lax"), ("NONE", "none")]
+)
+def test_the_refresh_cookie_policy_is_normalised(given, expected):
+    assert _settings(database_url="sqlite://", refresh_cookie_samesite=given).refresh_cookie_samesite == expected
+
+
+def test_an_unknown_refresh_cookie_policy_is_refused():
+    with pytest.raises(ValueError):
+        _settings(database_url="sqlite://", refresh_cookie_samesite="sometimes")

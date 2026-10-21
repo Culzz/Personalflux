@@ -43,6 +43,11 @@ class Settings(BaseSettings):
     # A rotated token presented again within this many seconds is treated as a
     # benign race (two tabs refreshing at once), not as theft.
     refresh_reuse_grace_seconds: int = 10
+    # "strict" whenever the storefront and API share a registrable domain. A
+    # cross-site pair (a *.vercel.app storefront calling a *.run.app API) needs
+    # "none", or the browser never sends the refresh cookie and a reload signs the
+    # visitor out; "none" is only accepted by browsers on a Secure cookie.
+    refresh_cookie_samesite: str = "strict"
     cors_origins: str = "http://localhost:5173"
     model_artifact_dir: str = "../ml/artifacts"
     # How often a worker checks whether the serving model changed (seconds).
@@ -94,6 +99,14 @@ class Settings(BaseSettings):
         if len(v) < 32:
             raise ValueError("JWT_SECRET_KEY must be at least 32 characters")
         return v
+
+    @field_validator("refresh_cookie_samesite")
+    @classmethod
+    def _known_samesite(cls, v: str) -> str:
+        value = v.strip().lower()
+        if value not in {"strict", "lax", "none"}:
+            raise ValueError("REFRESH_COOKIE_SAMESITE must be strict, lax or none")
+        return value
 
     @property
     def is_production(self) -> bool:

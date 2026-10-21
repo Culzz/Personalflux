@@ -27,6 +27,20 @@ def test_register_returns_token_and_sets_httponly_cookie(client, db):
     assert "refresh_token=" in set_cookie and "httponly" in set_cookie and "samesite=strict" in set_cookie
 
 
+def test_a_cross_site_deployment_gets_a_none_secure_cookie(client, db, monkeypatch):
+    # The free-tier pair is a *.vercel.app storefront calling a *.run.app API, which
+    # is cross-site: Strict means the browser never sends the cookie. None works,
+    # but a browser only stores it on a Secure cookie, so security follows the
+    # policy rather than APP_ENV.
+    from app.api.v1 import auth as auth_module
+
+    monkeypatch.setattr(auth_module.settings, "refresh_cookie_samesite", "none")
+    r = register(client, email="cross-site@shop.dev")
+    assert r.status_code == 201
+    set_cookie = r.headers["set-cookie"].lower()
+    assert "samesite=none" in set_cookie and "secure" in set_cookie
+
+
 def test_password_is_stored_as_argon2id_hash(client, db):
     register(client)
     user = db.scalar(select(User).where(User.email == "alice@shop.dev"))
