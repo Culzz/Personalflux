@@ -16,8 +16,15 @@ COPY alembic.ini alembic.ini
 COPY alembic alembic
 COPY app app
 
-# The artefact directory is a mount point in production (a disk or a fetched
-# tarball). Create it so the process can always start, even without a model.
+# The trained model travels inside the image. It is a build output rather than
+# source, so it stays out of git but is included in the upload (see
+# .gcloudignore). Baking it in removes a separate artefact host, and removes a
+# network download from every cold start.
+COPY model_artifacts /artifacts
+ENV MODEL_ARTIFACT_DIR=/artifacts
+
+# A clone without artefacts still builds: the directory only holds a placeholder,
+# and the API starts in its documented fallback mode.
 RUN mkdir -p /artifacts && chown -R app:app /code /artifacts
 USER app
 

@@ -55,26 +55,27 @@ Four moving parts:
 | storefront | **Vercel** | static SPA; set the project root to `personalflux/frontend`; `vercel.json` handles SPA rewrites and asset caching |
 | API | **Cloud Run** | `gcloud run deploy --source` builds the existing Dockerfile; the service scales to zero, which is also what lets the Neon compute sleep |
 | database | **Neon** managed Postgres | provisioned with `neon deploy`; credentials live in `.env.local`, secrets are set on the service |
-| model artefact | **Cloudflare R2** (or any static URL) | a `.tar.gz` the container downloads on each cold start |
+| model artefact | **the API image** | copied into `backend/model_artifacts/` before deploying; nothing extra to host |
 
-### Why the two hosts share a parent domain
+### Keeping sessions alive across hosts
 
-The refresh token is an HttpOnly cookie with `SameSite=Strict`, and the refresh
-endpoint additionally refuses a request whose `Origin` is not in `CORS_ORIGINS`.
-`Strict` means the browser will not attach that cookie to a request that is
-cross-site, and a bare `*.vercel.app` to `*.run.app` call is cross-site
-(different registrable domains). Sessions would die on every reload.
+The refresh token is an HttpOnly cookie, and the refresh endpoint also refuses a
+request whose `Origin` is not in `CORS_ORIGINS`.
 
-So put the storefront and the API on two subdomains of one domain you control:
+When the storefront and the API are two subdomains of one domain you control, the
+cookie is same-site and the default `SameSite=Strict` is correct:
 
 ```
 shop.example.com   ->  Vercel       (custom domain on the frontend project)
 api.example.com    ->  Cloud Run    (domain mapping, CNAME to ghs.googlehosted.com)
 ```
 
-Subdomains of the same registrable domain are same-site, so `Strict` keeps
-working and no code change is needed. Both hosts issue TLS for a custom domain
-themselves; nothing to configure here.
+Without a domain the free hostnames (`*.vercel.app` for the storefront, `*.run.app`
+for the API) are different registrable domains, so every API call is cross-site and
+a `Strict` cookie is never sent: a reload would sign the visitor out. In that case
+set `REFRESH_COOKIE_SAMESITE=none` on the service. The cookie is marked `Secure`
+automatically then, because browsers discard `SameSite=None` without it, and the
+`Origin` check still applies. Revisit the setting once a domain is added.
 
 ### Deploy the API (Cloud Run)
 
@@ -104,7 +105,7 @@ gcloud run deploy personaflux-api \
   --cpu 1 --memory 1Gi --concurrency 80 \
   --min-instances 0 --max-instances 2 \
   --cpu-boost --timeout 300 \
-  --set-env-vars APP_ENV=production,MODEL_ARTIFACT_DIR=/tmp/artifacts,WEB_CONCURRENCY=1,MODEL_POLL_SECONDS=10,LOG_LEVEL=INFO,CORS_ORIGINS=https://shop.example.com,MODEL_ARTIFACT_URL=<r2 url> \
+  --set-env-vars APP_ENV=production,WEB_CONCURRENCY=1,MODEL_POLL_SECONDS=10,LOG_LEVEL=INFO,CORS_ORIGINS=https://shop.example.com,REFRESH_COOKIE_SAMESITE=none \
   --set-secrets DATABASE_URL=personaflux-database-url:latest,JWT_SECRET_KEY=personaflux-jwt-secret:latest \
   --startup-probe-http-path /health --startup-probe-initial-delay 5 \
   --startup-probe-period 10 --startup-probe-timeout 5 --startup-probe-failure-threshold 30
@@ -144,25 +145,21 @@ tier is North-America-centric for egress, so `europe-west3` can add pennies; the
 image in Artifact Registry exceeds the 0.5 GB free storage by a little. Expect a
 few cents a month rather than zero, and set a budget alert.
 
-### Hosting the model artefact
+### The model ships in the image
 
-The container downloads `MODEL_ARTIFACT_URL` into `/tmp/artifacts` when it starts
-and the directory is empty. Cloud Run's filesystem is memory, so this happens on
-every cold start — 13 MB, once per scale-up, not per request. Any URL that answers
-an unauthenticated GET works; Cloudflare R2 is free at this size and charges no
-egress:
+`backend/model_artifacts/` is copied to `/artifacts` during the build, and the
+image sets `MODEL_ARTIFACT_DIR=/artifacts`. There is no artefact host, no public
+URL to create, and no download on cold start. Before deploying, put the trained
+version in place from `personalflux/backend`:
 
 ```
-npx wrangler r2 bucket create personaflux-artifacts
-npx wrangler r2 object put personaflux-artifacts/model/personaflux-v0.1.tar.gz \
-  --file "%TEMP%\opencode\personaflux-artifacts-v0.1.tar.gz"
+Copy-Item ..\ml\artifacts\personaflux-v0.1-20261013-222549 .\model_artifacts\ -Recurse
 ```
 
-Then enable a public URL for the bucket (R2 → Settings → Public access) and use
-`https://pub-<hash>.r2.dev/model/personaflux-v0.1.tar.gz`.
-
-The tarball must contain the version directory at its top level, because that is
-what the registry scans for:
+The directory is gitignored (about 16 MB of build output), which is why
+`backend/.gcloudignore` exists: it keeps `model_artifacts/` in the Cloud Run upload
+while excluding local state such as `.venv`. The registry scans for version folders
+that contain `metadata.json`:
 
 ```
 personaflux-v0.1-20261013-222549/metadata.json
@@ -172,10 +169,15 @@ personaflux-v0.1-20261013-222549/popularity.json
 personaflux-v0.1-20261013-222549/similarity.npz
 ```
 
+A fresh clone contains only `model_artifacts/.keep`, so the image still builds and
+the API starts in fallback mode (database popularity), reporting that on
+`/api/v1/ml/health`. If you later build from CI, where artefacts are absent, set
+`MODEL_ARTIFACT_URL` to a tarball instead: `ensure_artifacts()` downloads and
+unpacks it at boot, then the same checksum verification runs.
+
 `items.npy` and the parquet are derived from the Retailrocket dataset, whose terms
-are non-commercial: publish them to a bucket you control, not to a public release
-of the repository. Without the artefact the API still serves, from database
-popularity, and says so on `/api/v1/ml/health`.
+are non-commercial: keep them in an image or bucket you control, not in a public
+release of the repository.
 
 ### The database (Neon)
 
@@ -320,9 +322,10 @@ therefore fails one request instead of holding a worker and a connection forever
   migration.
 - *Bad model promoted*: promote the previous version. No restart, no redeploy.
 - *API unhealthy but database fine*: check `/health/model`; if the poller is
-  behind or the artefact fetch failed, restore `MODEL_ARTIFACT_URL` and redeploy a
-  revision, or promote a model that is already on disk. The storefront keeps
-  working either way, because the catalogue endpoints do not depend on the model.
+  behind, promote a model that is already on disk. If the version folder is missing
+  from the image, redeploy a revision with it copied into `model_artifacts/` (or set
+  `MODEL_ARTIFACT_URL`). The storefront keeps working either way, because the
+  catalogue endpoints do not depend on the model.
 - *Database lost*: restore from Neon (point-in-time or a branch), then re-run the
   catalogue importers. Events are append-only and idempotent by key, so replays
   are safe.

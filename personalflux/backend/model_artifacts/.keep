@@ -1,0 +1,3 @@
+Keeps model_artifacts/ present in a fresh clone so the image build never fails.
+Trained artefacts are build outputs: they are copied in before a deployment and
+are not stored in git.

@@ -22,6 +22,9 @@ ml/artifacts/*
 !ml/data/interim/.gitkeep
 !ml/data/processed/.gitkeep
 !ml/artifacts/.gitkeep
+# The copy that ships inside the API image (see backend/.gcloudignore)
+backend/model_artifacts/*
+!backend/model_artifacts/.keep
 
 # OS / editor
 .DS_Store
