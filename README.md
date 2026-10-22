@@ -85,3 +85,14 @@ items the generator never proposed rather than items it ranked too low.
 
 `docs/MODEL_CARD.md` is what was actually measured. No revenue claims — offline
 metrics only.
+
+## Data and licence
+
+The ML half trains on the RetailRocket eCommerce behaviour dataset, downloaded
+separately and never committed; the directories under `ml/data/` and
+`ml/artifacts/` are placeholders the pipeline fills in. Splits are chronological
+throughout, so nothing from a customer's future reaches their past.
+
+MIT — see `LICENSE`. CI runs the backend suite against a real Postgres service
+and builds the frontend on every push.
+

@@ -52,7 +52,7 @@ Four moving parts:
 
 | piece | host | notes |
 |---|---|---|
-| storefront | **Vercel** | static SPA; set the project root to `personalflux/frontend`; `vercel.json` handles SPA rewrites and asset caching |
+| storefront | **Vercel** | static SPA; set the project root to `frontend`; `vercel.json` handles SPA rewrites and asset caching |
 | API | **Cloud Run** | `gcloud run deploy --source` builds the existing Dockerfile; the service scales to zero, which is also what lets the Neon compute sleep |
 | database | **Neon** managed Postgres | provisioned with `neon deploy`; credentials live in `.env.local`, secrets are set on the service |
 | model artefact | **the API image** | copied into `backend/model_artifacts/` before deploying; nothing extra to host |
@@ -79,7 +79,7 @@ automatically then, because browsers discard `SameSite=None` without it, and the
 
 ### Deploy the API (Cloud Run)
 
-One-time project setup, then a single deploy command. From `personalflux/backend`,
+One-time project setup, then a single deploy command. From `backend`,
 which is where the Dockerfile lives:
 
 ```
@@ -150,7 +150,7 @@ few cents a month rather than zero, and set a budget alert.
 `backend/model_artifacts/` is copied to `/artifacts` during the build, and the
 image sets `MODEL_ARTIFACT_DIR=/artifacts`. There is no artefact host, no public
 URL to create, and no download on cold start. Before deploying, put the trained
-version in place from `personalflux/backend`:
+version in place from `backend`:
 
 ```
 Copy-Item ..\ml\artifacts\personaflux-v0.1-20261013-222549 .\model_artifacts\ -Recurse
@@ -252,7 +252,7 @@ discarded rather than served.
 
 ### Deploy the storefront (Vercel)
 
-1. Vercel → **New Project** → same repository → **Root Directory** `personalflux/frontend`.
+1. Vercel → **New Project** → same repository → **Root Directory** `frontend`.
 2. Environment variable `VITE_API_URL` = `https://api.example.com` (no trailing slash).
 3. Deploy. `vercel.json` already rewrites client routes to `index.html`.
 4. Add the custom domain (`shop.example.com`) under Settings → Domains, then put
@@ -265,7 +265,7 @@ scripts read the same connection the API does, so nothing has to be exported by
 hand:
 
 ```
-cd personalflux/backend
+cd backend
 python -m alembic upgrade head                        # normally the container does this
 python ..\scripts\seed_showcase.py                    # described demo products, labelled as demo
 python ..\scripts\import_affiliate_catalog.py "wireless headphones"   # optional: real listings, needs eBay keys
