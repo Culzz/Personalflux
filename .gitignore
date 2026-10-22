@@ -1,5 +1,35 @@
-# Local dataset extracts and scratch archives.
+# --- secrets ---
+.env
+*.env.local
+.neon
+
+# --- python ---
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+
+# --- node ---
+node_modules/
+dist/
+
+# --- data and model artifacts (too big / regenerated) ---
 # The Retailrocket files are inputs to the offline training pipeline, not source.
+ml/data/raw/*
+ml/data/interim/*
+ml/data/processed/*
+ml/artifacts/*
+!ml/data/raw/.gitkeep
+!ml/data/interim/.gitkeep
+!ml/data/processed/.gitkeep
+!ml/artifacts/.gitkeep
+
+# The copy that ships inside the API image (see backend/.gcloudignore)
+backend/model_artifacts/*
+!backend/model_artifacts/.keep
+
+# --- local dataset extracts and scratch archives, kept beside this checkout ---
 /events.csv
 /category_tree.csv
 /item_properties_part1.csv
@@ -7,10 +37,10 @@
 /item_properties_part3.csv
 /archive (5).zip
 /trustscore/
+personaflux-backend.zip
+personaflux-frontend.zip
 
-# Build outputs that live beside the project rather than inside it.
-/personalflux/personaflux-backend.zip
-/personalflux/personaflux-frontend.zip
-.neon
-node_modules/
-.env.local
+# --- OS / editor ---
+.DS_Store
+Thumbs.db
+.vscode/
