@@ -1,0 +1,60 @@
+# Render blueprint: the API as a Docker service and the storefront as a static
+# site, both built from this repository.
+#
+# The database stays on Neon (see docs/DEPLOYMENT.md). Render's free plans give
+# both services a public HTTPS URL; the API spins down after 15 minutes idle,
+# which also lets Neon suspend its compute.
+#
+# Both hostnames sit under onrender.com, so the storefront and the API are
+# same-site: the refresh cookie stays SameSite=Strict and no cross-site policy is
+# needed. CORS still has to name the storefront exactly.
+services:
+  - type: web
+    name: personaflux-api
+    runtime: docker
+    plan: free
+    region: frankfurt
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: APP_ENV
+        value: production
+      # One worker: the free instance has 512 MB and a shared CPU.
+      - key: WEB_CONCURRENCY
+        value: "1"
+      - key: LOG_LEVEL
+        value: info
+      - key: MODEL_POLL_SECONDS
+        value: "10"
+      # The trained model is a build output, so it is not in git. The container
+      # downloads it into this writable directory on first boot.
+      - key: MODEL_ARTIFACT_DIR
+        value: /artifacts
+      - key: MODEL_ARTIFACT_URL
+        value: https://github.com/Culzz/Personalflux/releases/download/model-v0.1/personaflux-v0.1.tar.gz
+      - key: CORS_ORIGINS
+        value: https://personaflux-shop.onrender.com
+      - key: REFRESH_COOKIE_SAMESITE
+        value: strict
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET_KEY
+        sync: false
+
+  - type: web
+    name: personaflux-shop
+    runtime: static
+    plan: free
+    rootDir: frontend
+    buildCommand: npm ci && npm run build
+    staticPublishPath: ./dist
+    envVars:
+      # Vite inlines this at build time, so it must be the public API origin.
+      - key: VITE_API_URL
+        value: https://personaflux-api.onrender.com
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html

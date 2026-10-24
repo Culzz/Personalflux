@@ -25,7 +25,7 @@ ml/artifacts/*
 !ml/data/processed/.gitkeep
 !ml/artifacts/.gitkeep
 
-# The copy that ships inside the API image (see backend/.gcloudignore)
+# The copy that can be placed inside the API image for a self-contained build
 backend/model_artifacts/*
 !backend/model_artifacts/.keep
 
