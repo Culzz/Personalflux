@@ -48,118 +48,77 @@ presented as a real listing. All three are idempotent.
 
 ## Production
 
-Four moving parts:
+Two Render services, one Neon database:
 
 | piece | host | notes |
 |---|---|---|
-| storefront | **Vercel** | static SPA; set the project root to `frontend`; `vercel.json` handles SPA rewrites and asset caching |
-| API | **Cloud Run** | `gcloud run deploy --source` builds the existing Dockerfile; the service scales to zero, which is also what lets the Neon compute sleep |
-| database | **Neon** managed Postgres | provisioned with `neon deploy`; credentials live in `.env.local`, secrets are set on the service |
-| model artefact | **the API image** | copied into `backend/model_artifacts/` before deploying; nothing extra to host |
+| storefront | **Render static site** | built from `frontend/` with `npm ci && npm run build`; SPA rewrite to `index.html` |
+| API | **Render web service** | Docker, built from `backend/Dockerfile`; the free plan spins down after 15 minutes idle, which also lets the Neon compute sleep |
+| database | **Neon** managed Postgres | provisioned with `neon deploy`; credentials live in `.env.local` |
+| model artefact | **GitHub release asset** | `model-v0.1`; the container downloads it into `/artifacts` on boot |
 
-### Keeping sessions alive across hosts
+`render.yaml` is the blueprint for both services. `DATABASE_URL` and
+`JWT_SECRET_KEY` are marked `sync: false`, so they are set once in the dashboard
+and never committed.
 
-The refresh token is an HttpOnly cookie, and the refresh endpoint also refuses a
-request whose `Origin` is not in `CORS_ORIGINS`.
+### Keeping sessions alive
 
-When the storefront and the API are two subdomains of one domain you control, the
-cookie is same-site and the default `SameSite=Strict` is correct:
+The refresh token is an HttpOnly cookie, and the refresh endpoint refuses a request
+whose `Origin` is not in `CORS_ORIGINS`.
 
-```
-shop.example.com   ->  Vercel       (custom domain on the frontend project)
-api.example.com    ->  Cloud Run    (domain mapping, CNAME to ghs.googlehosted.com)
-```
-
-Without a domain the free hostnames (`*.vercel.app` for the storefront, `*.run.app`
-for the API) are different registrable domains, so every API call is cross-site and
-a `Strict` cookie is never sent: a reload would sign the visitor out. In that case
-set `REFRESH_COOKIE_SAMESITE=none` on the service. The cookie is marked `Secure`
-automatically then, because browsers discard `SameSite=None` without it, and the
-`Origin` check still applies. Revisit the setting once a domain is added.
-
-### Deploy the API (Cloud Run)
-
-One-time project setup, then a single deploy command. From `backend`,
-which is where the Dockerfile lives:
+Both Render hostnames sit under `onrender.com`:
 
 ```
-gcloud auth login
-gcloud config set project <project-id>
-gcloud services enable run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com secretmanager.googleapis.com
+https://personaflux-shop.onrender.com   ->  static site
+https://personaflux-api.onrender.com    ->  web service
 ```
 
-Put the two credentials in Secret Manager rather than in plain environment
-variables (free at this scale, and the database password stays out of the
-revision listing):
+`onrender.com` is the registrable domain for both, so the cookie is same-site and
+`SameSite=Strict` (the default) works unchanged. `CORS_ORIGINS` still has to name
+the storefront origin exactly, because the API is a different origin.
 
-```
-printf '%s' "<DATABASE_URL_UNPOOLED from .env.local>" | gcloud secrets create personaflux-database-url --data-file=-
-printf '%s' "<48 random characters>"                  | gcloud secrets create personaflux-jwt-secret --data-file=-
-```
+If the storefront ever moves to a different registrable domain (a custom domain on
+Vercel, say), set `REFRESH_COOKIE_SAMESITE=none` on the API. The cookie is then
+marked `Secure` automatically, because browsers discard `SameSite=None` without it,
+and the `Origin` check still applies.
 
-```
-gcloud run deploy personaflux-api \
-  --source . \
-  --region europe-west3 \
-  --allow-unauthenticated \
-  --cpu 1 --memory 1Gi --concurrency 80 \
-  --min-instances 0 --max-instances 2 \
-  --cpu-boost --timeout 300 \
-  --set-env-vars APP_ENV=production,WEB_CONCURRENCY=1,MODEL_POLL_SECONDS=10,LOG_LEVEL=INFO,CORS_ORIGINS=https://shop.example.com,REFRESH_COOKIE_SAMESITE=none \
-  --set-secrets DATABASE_URL=personaflux-database-url:latest,JWT_SECRET_KEY=personaflux-jwt-secret:latest \
-  --startup-probe-http-path /health --startup-probe-initial-delay 5 \
-  --startup-probe-period 10 --startup-probe-timeout 5 --startup-probe-failure-threshold 30
-```
+### Deploying
 
-`--source .` builds the existing `Dockerfile` with Cloud Build and pushes it to
-Artifact Registry, so no image has to be built by hand. The container command is
-unchanged: `alembic upgrade head`, then Uvicorn on `$PORT`, which Cloud Run sets.
+1. Create the services from the blueprint: **New → Blueprint**, pick the
+   repository, apply. Render reads `render.yaml`.
+2. Set the two secret environment variables on `personaflux-api`:
+   - `DATABASE_URL`: the direct Neon connection (`DATABASE_URL_UNPOOLED` in
+     `.env.local`, without the surrounding quotes)
+   - `JWT_SECRET_KEY`: 48 random characters
+3. The first deploy runs `alembic upgrade head`, then Uvicorn on `$PORT`.
 
 Why these values:
 
-- **`--min-instances 0`** is the whole reason for choosing Cloud Run: an idle
-  service stops querying Postgres, Neon suspends its compute in turn, and a hobby
+- **`plan: free`**, with a service that spins down after 15 minutes idle: an idle
+  API stops querying Postgres, Neon suspends its compute in turn, and the
   deployment stays inside Neon's 191.9 free compute-hours instead of burning ~730.
-- **`--max-instances 2`** bounds how many connections the database can see. Each
-  instance holds a pool of 5 (+10 overflow), which is well inside Neon's limit.
-- **`WEB_CONCURRENCY=1`** because the instance has one vCPU and one gigabyte; two
-  workers would sit near the memory ceiling for no throughput gain at this size.
-  Concurrency 80 is handled by the async event loop and the DB threadpool.
-- **`--cpu-boost`** and the **startup probe** cover the first boot, which loads
-  numpy and the model before it answers anything.
-- Under Cloud Run's default CPU throttling the in-process promotion poll only runs
-  while requests are being served, so a promotion is adopted on the next request
-  rather than while the service sleeps. `--no-cpu-throttling` keeps a poller
-  running, at the cost of always-allocated CPU.
+- **`WEB_CONCURRENCY=1`** because the free instance has 512 MB and a shared CPU.
+  Two workers would sit near the memory ceiling for no throughput gain at this size.
+- **`MODEL_POLL_SECONDS=10`** adopts a promoted model on the next poll rather than
+  requiring a restart.
 
-Custom domain, and the CNAME record it asks for:
+**What this costs.** Render's free plan needs no card for a static site or a web
+service. The API sleeps when idle, so the first request after a quiet spell waits
+for a cold start (roughly a minute: container start, migrations, model download).
+Neon's free plan covers the database.
 
-```
-gcloud beta run domain-mappings create --service personaflux-api --domain api.example.com --region europe-west3
-```
+### The model artefact
 
-**What this costs.** Cloud Run's always-free tier (2M requests, 360k GB-seconds,
-180k vCPU-seconds a month) covers a portfolio deployment, but Google requires a
-billing account with a card attached before the service can be created. The free
-tier is North-America-centric for egress, so `europe-west3` can add pennies; the
-image in Artifact Registry exceeds the 0.5 GB free storage by a little. Expect a
-few cents a month rather than zero, and set a budget alert.
-
-### The model ships in the image
-
-`backend/model_artifacts/` is copied to `/artifacts` during the build, and the
-image sets `MODEL_ARTIFACT_DIR=/artifacts`. There is no artefact host, no public
-URL to create, and no download on cold start. Before deploying, put the trained
-version in place from `backend`:
+The trained version is a build output, so it is not in git. It is published as a
+release asset, and the API downloads it into `/artifacts` on boot, then verifies the
+checksums in `metadata.json` as usual:
 
 ```
-Copy-Item ..\ml\artifacts\personaflux-v0.1-20261013-222549 .\model_artifacts\ -Recurse
+https://github.com/Culzz/Personalflux/releases/download/model-v0.1/personaflux-v0.1.tar.gz
 ```
 
-The directory is gitignored (about 16 MB of build output), which is why
-`backend/.gcloudignore` exists: it keeps `model_artifacts/` in the Cloud Run upload
-while excluding local state such as `.venv`. The registry scans for version folders
-that contain `metadata.json`:
+To publish a new version, upload a tarball whose top level is the version directory
+(the registry scans for folders containing `metadata.json`):
 
 ```
 personaflux-v0.1-20261013-222549/metadata.json
@@ -169,15 +128,12 @@ personaflux-v0.1-20261013-222549/popularity.json
 personaflux-v0.1-20261013-222549/similarity.npz
 ```
 
-A fresh clone contains only `model_artifacts/.keep`, so the image still builds and
-the API starts in fallback mode (database popularity), reporting that on
-`/api/v1/ml/health`. If you later build from CI, where artefacts are absent, set
-`MODEL_ARTIFACT_URL` to a tarball instead: `ensure_artifacts()` downloads and
-unpacks it at boot, then the same checksum verification runs.
+Without the artefact the API still serves, from database popularity, and says so on
+`/api/v1/ml/health`.
 
 `items.npy` and the parquet are derived from the Retailrocket dataset, whose terms
-are non-commercial: keep them in an image or bucket you control, not in a public
-release of the repository.
+are non-commercial. The release asset is public so the API can fetch it, which is
+the same exposure a public bucket would have; take it down when the demo ends.
 
 ### The database (Neon)
 
@@ -215,10 +171,8 @@ hands out `postgresql://`, which SQLAlchemy would read as "use psycopg2" (not
 installed); the settings layer rewrites the scheme to `postgresql+psycopg://`.
 `sslmode=require` must survive the copy — Neon refuses an unencrypted connection.
 
-For the Cloud Run service, set `DATABASE_URL` to the **`DATABASE_URL_UNPOOLED`**
-value from `.env.local` (with the `postgresql+psycopg://` scheme, though either
-form works now). Setting it to the pooler URL also connects, minus the statement
-timeout.
+For the Render service, set `DATABASE_URL` to the **`DATABASE_URL_UNPOOLED`**
+value from `.env.local`, without the surrounding quotes.
 
 **Usage billing.** Neon suspends an idle compute and wakes it on the next query.
 Two things here touch the database while nobody is shopping: the readiness probe
@@ -235,28 +189,17 @@ free plan allowance of 191.9. If that matters, pick one:
 `pool_pre_ping` is already on, so a connection that Neon closed while suspended is
 discarded rather than served.
 
-**Usage billing.** Neon suspends an idle compute and wakes it on the next query.
-Two things here touch the database while nobody is shopping: the readiness probe
-(`/health/db`, polled by the host) and each worker's promotion poll. Between them
-the compute stays awake, which is roughly 730 compute-hours a month against a
-free plan allowance of 191.9. If that matters, pick one:
+### Deploy the storefront (Render)
 
-- a paid Neon plan, which is what keeps promotion and rollback instant;
-- accept the free tier with `MODEL_POLL_SECONDS` raised (say 1800) and
-  `healthCheckPath` changed to `/health`, which lets the compute sleep and costs
-  a promotion a while to reach every worker;
-- run one worker (`WEB_CONCURRENCY=1`).
+`render.yaml` already defines it: root directory `frontend`, build command
+`npm ci && npm run build`, publish path `./dist`, and a rewrite of every path to
+`index.html` so client-side routes survive a reload.
 
-`pool_pre_ping` is already on, so a connection that Neon closed while suspended is
-discarded rather than served.
-
-### Deploy the storefront (Vercel)
-
-1. Vercel → **New Project** → same repository → **Root Directory** `frontend`.
-2. Environment variable `VITE_API_URL` = `https://api.example.com` (no trailing slash).
-3. Deploy. `vercel.json` already rewrites client routes to `index.html`.
-4. Add the custom domain (`shop.example.com`) under Settings → Domains, then put
-   that same origin into the API's `CORS_ORIGINS`.
+1. Applying the blueprint creates the static site together with the API.
+2. `VITE_API_URL` is the API origin. Vite inlines it at build time, so changing it
+   means a redeploy, not just a restart.
+3. The API's `CORS_ORIGINS` must contain the storefront origin exactly
+   (`https://personaflux-shop.onrender.com` in the blueprint).
 
 ### First run: the database is empty
 
@@ -315,17 +258,16 @@ keeps serving. If a worker never catches up, `/health/model` stays 503 and names
 therefore fails one request instead of holding a worker and a connection forever.
 
 **Recovery.**
-- *Bad deploy*: `gcloud run revisions list` then
-  `gcloud run services update-traffic personaflux-api --to-revisions <previous>=100`.
-  The previous revision keeps running until the new one passes its startup probe.
-  Migrations are additive in this project, so a rollback does not need a down
-  migration.
+- *Bad deploy*: open the service in the Render dashboard → **Deploys**, pick the
+  previous successful one and choose **Rollback**. The previous container keeps
+  serving until the new one passes its health check. Migrations are additive in this
+  project, so a rollback does not need a down migration.
 - *Bad model promoted*: promote the previous version. No restart, no redeploy.
 - *API unhealthy but database fine*: check `/health/model`; if the poller is
-  behind, promote a model that is already on disk. If the version folder is missing
-  from the image, redeploy a revision with it copied into `model_artifacts/` (or set
-  `MODEL_ARTIFACT_URL`). The storefront keeps working either way, because the
-  catalogue endpoints do not depend on the model.
+  behind, promote a model that is already on disk. If the artefact download failed,
+  check `MODEL_ARTIFACT_URL` and that the release asset is still reachable. The
+  storefront keeps working either way, because the catalogue endpoints do not
+  depend on the model.
 - *Database lost*: restore from Neon (point-in-time or a branch), then re-run the
   catalogue importers. Events are append-only and idempotent by key, so replays
   are safe.

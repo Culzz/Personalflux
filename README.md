@@ -3,6 +3,16 @@
 Adaptive customer personalization for e-commerce.
 Long-term preferences + recent intent = recommendations that adapt.
 
+## Live
+
+- Storefront: <https://personaflux-shop.onrender.com>
+- API: <https://personaflux-api.onrender.com/health>
+
+Both run on Render's free plan, so the first request after fifteen quiet minutes
+waits for a cold start (about a minute). The storefront is a static build of
+`frontend/`; the API is the Docker image in `backend/`, with Postgres on Neon and
+the model fetched from a release asset at boot.
+
 ## Run it
 
 ```
